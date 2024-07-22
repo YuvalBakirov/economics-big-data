@@ -10,39 +10,62 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ##Load libraries
-```{r libraries}
-setwd("C:/Users/Acer/big_data")
-library(tidyverse)
-library(ggplot2)
-library(dplyr)
-library(readr)
-# Load necessary packages
-
+```{r}
+install.packages("pacman")
 ```
 
-```{r setup, include=FALSE}
-library(pacman)
-p_load(tidyverse, readr, skimr, knitr, ggplot2)
+```{r}
+
+pacman::p_load(
+              data.table,
+              ggplot2,
+              tidyverse,
+              openxlsx,
+              DT,
+              shiny,
+              skimr,
+              psych,
+              ExPanDaR,
+              ggpubr,
+              # devtools,
+              # DescTools,
+              Rcpp,
+              visdat)
 ```
 
 
 ## Part 1: Descriptive Statistics
 
 ### 1.1 Load Data and Libraries
-###First, load the necessary libraries and data.
+First, load the necessary libraries and data.
 ```{r}
-listings_data <- read_csv('listings_clean.csv')
-calendar_data <- read_csv('calendar_clean.csv')
+listings_data <- fread('listings_clean.csv')
+calendar_data <- fread('calendar_clean.csv')
 ```
+
+For this part we will only look at listings_clean.csv data:
+
+At first let's look at the table:
+
+```{r}
+
+listings_dt <- as.data.table(listings_data)
+
+```
+
+מהסתכלות על הנתונים + הקודבוק ניתן לראות שמדובר על נתוני נדל"ן איירביאנבי ופיצ'רים על כל נכס.
+נראה כי משתנה המטרה שלנו זה המחיר שיש לשלם לשהות בתאריך מסוים
+
 ### 1.2 Descriptive Statistics
-### Use skimr to provide a summary of the dataset.
+Use skimr to provide a summary of the dataset.
 
 ```{r descriptive-statistics}
 skim(listings_data)
 ```
 ## Part 2: Graphs for Single Variables
+
 ### 2.1 Graph 1: Distribution of price_dollars
-* Price Distribution helps you understand the pricing landscape and adjust strategies accordingly.
+* Price Distribution will help us understand the pricing landscape and adjust strategies accordingly.
 
 * Why It’s Interesting:
 
@@ -61,23 +84,44 @@ ggplot(listings_data, aes(x = price_dollars)) +
        y = "Frequency")
 
 ```
-Interpretation of the Price Distribution Graph
-The graph you generated shows the distribution of listing prices in dollars. Here are some key observations and their implications:
+Interpretation of the Price Distribution Graph:
+
+The graph shows the distribution of listing prices in dollars. 
+Here are some key observations and their implications:
 
 Skewed Distribution:
 
 The distribution is highly skewed to the right, with a large concentration of listings priced below $500. There are very few listings with prices above $1000, and those above $2000 are even rarer.
 Implication: This skewness indicates that most listings are relatively affordable, while high-end, expensive listings are much less common. Airbnb might consider focusing on marketing these high-end listings differently to attract the right clientele.
+
+ניתן לראות שיש ערכים דיי קיצוניים ביחס למגמה בערך 500$
+
 Outliers:
 
 The presence of prices that go up to $4000 suggests outliers in the data. These could be luxury properties or special cases.
 Implication: Identifying these outliers can be useful for creating targeted marketing strategies. For example, Airbnb can create exclusive campaigns highlighting these luxury properties.
-High Frequency of Low Prices:
 
+High Frequency of Low Prices:
 The high frequency of listings priced below $500 suggests that Airbnb's market in this region is more inclined towards budget-friendly or mid-range options.
 Implication: Airbnb could leverage this insight to enhance budget-friendly amenities or introduce more competitive pricing strategies to attract more budget-conscious travelers.
 
+ננסה להסתכל רק על 50 הבינים הראשונים כדי לראות את המגמה יותר בבירור
 
+```{r price-distribution}
+ggplot(listings_data, aes(x = price_dollars)) +
+  geom_histogram(bins = 50, fill = "blue", color = "black") +
+  labs(title = "Distribution of Prices",
+       x = "Price in Dollars",
+       y = "Frequency")
+
+```
+```{r price-boxplot}
+ggplot(listings_data, aes(y = price_dollars)) +
+  geom_boxplot(fill = "blue", color = "black") +
+  labs(title = "Box Plot of Prices",
+       y = "Price in Dollars")
+
+```
 
 ### 2.2 Graph 2: Reviews per Month
 * Reviews Per Month indicates popularity and engagement, helping you target growth areas.
@@ -93,27 +137,31 @@ Implication: Airbnb could leverage this insight to enhance budget-friendly ameni
 4. Opportunity for Growth: Listings with fewer reviews might have potential for growth. Strategies could be developed to increase their visibility or improve their appeal.
 
 ```{r reviews-per-month}
-ggplot(listings, aes(x = reviews_per_month)) +
+ggplot(listings_data, aes(x = reviews_per_month)) +
   geom_histogram(binwidth = 0.5, fill = "green", color = "black") +
   labs(title = "Distribution of Reviews per Month",
        x = "Reviews per Month",
        y = "Frequency")
 ```
-Interpretation of the Reviews per Month Distribution Graph
-The graph displays the distribution of the average number of reviews per month for the listings. Here are some key observations and their implications:
+Interpretation of the Reviews per Month Distribution Graph:
+The graph displays the distribution of the average number of reviews per month for the listings. 
+Here are some key observations and their implications:
 
 Skewed Distribution:
 
 The distribution is highly skewed to the right, with the majority of listings receiving between 0 and 2 reviews per month.
 Implication: Most listings are not receiving a high volume of reviews, indicating either low booking rates or less engagement from guests in leaving reviews. Airbnb might consider incentivizing guests to leave reviews to increase engagement.
+
 High Frequency of Low Reviews:
 
 A significant number of listings receive very few reviews (0-2 reviews per month). This could be due to new listings, less popular locations, or lower overall bookings.
 Implication: Listings with few reviews may benefit from promotional activities to increase visibility and bookings. Additionally, Airbnb can introduce programs to encourage guests to leave reviews.
+
 Presence of Listings with Higher Reviews:
 
 There are listings that receive up to 20 reviews per month, although these are much less common.
 Implication: These high-review listings could be top-performing properties, likely offering exceptional service or amenities. Understanding what makes these listings successful could help improve other listings.
+
 
 
 ### 2.3 Graph 3: Distribution of review_scores_rating
@@ -129,13 +177,17 @@ Implication: These high-review listings could be top-performing properties, like
 
 4. Market Perception: Review scores can also impact how listings are perceived by potential guests. Higher-rated listings might attract more bookings and allow for higher pricing.
 ```{r rating-distribution}
-ggplot(listings, aes(x = review_scores_rating)) +
+ggplot(listings_data, aes(x = review_scores_rating)) +
   geom_histogram(binwidth = 5, fill = "red", color = "black") +
   labs(title = "Distribution of Review Scores Rating",
        x = "Review Scores Rating",
        y = "Frequency")
 
 ```
+```{r}
+
+```
+
 
 
 ## Part 3: Graphs for Relationships Between Variables

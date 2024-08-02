@@ -1477,6 +1477,8 @@ ggplot(average_price_per_day, aes(x = date, y = average_price)) +
 התקופה המודגשת בירוק: ספטמבר עד דצמבר 2016
 בגרף שיעור התפוסה היומי, אנו רואים עלייה עקבית בתפוסה מספטמבר עד דצמבר 2016, במקביל לירידה הדרגתית במחירים הממוצעים כפי שמתואר בגרף המחיר הממוצע היומי. תקופה זו מעידה על תגובה חיובית בשוק להורדת המחירים, וכתוצאה מכך שיעורי תפוסה גבוהים יותר. ייתכן שהמחירים הנמוכים יותר הפכו את הנכסים לאטרקטיביים יותר עבור שוכרים, מה שהוביל להגדלת ההזמנות. מגמה זו מעידה על גמישות הביקוש בשוק, בו התפוסה רגישה לשינויים במחיר.
 
+אבללל נזכור שממוצע תעריף לילה לא ממש יכול לומר הרבה או לייצג באופן גורף כי יכול להיות שיש מחיר אחד שהקפיץ את הממוצע וכל השאר נורמלי (במרכאות)
+
 
 נבדוק ערכים חסרים
 
@@ -1597,12 +1599,15 @@ ggplot(monthly_price_group_percentage_2017, aes(x = month_year, y = percentage, 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 בחודש אפריל נמכרו הנכסים הכי יקרים מבין החודשים ב 2017
+אבל זה לא ממש אומר הרבה כי זה רואים התנהגות יחסית דומה 
 
 
 Occupancy and Price Relationship:
 Investigate if the price increase correlates with occupancy rates. Higher occupancy rates may indicate higher demand, which could drive up prices.
 
-נבדוק אם עליית המחירים תואמת את שיעורי התפוסה. שיעורי תפוסה גבוהים עשויים להצביע על ביקוש גבוה יותר, מה שעלול להעלות את המחירים
+נבדוק האם יש קשר בין אחוזי תפוסה לבין ממוצע תעריף יומי לילה. שיעורי תפוסה גבוהים עשויים להצביע על ביקוש גבוה יותר, מה שעלול להעלות את המחירים
+
+זה לר גרף כלכך טוב :(
 
 ```{r}
 # Calculating daily occupancy rate and average price
@@ -1637,8 +1642,9 @@ ggplot(merged_data, aes(x = date, y = price_difference)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-
+יש פה משהו מוזר, אבל קשה להבין את זה 
 ננסה להסתכל על ההפרש הממוצע ליום
+ושוב נקח בחשבון שמדובר על ממוצע וזה נותן אינטואציה ולא אומר משהו בוודאות
 
 ```{r}
 # Calculate the differences between org_price and price_dollars for each day

@@ -14,7 +14,6 @@ This project provides an in-depth analysis of Airbnb listings in Boston, focusin
 - [Neighborhood Analysis](#neighborhood-analysis)
 - [Outlier Detection](#outlier-detection)
 - [Business Recommendations](#business-recommendations)
-- [How to Run the Project](#how-to-run-the-project)
 - [Conclusion](#conclusion)
 
 ---

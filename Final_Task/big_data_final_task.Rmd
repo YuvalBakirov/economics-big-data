@@ -5,52 +5,349 @@ date: "2024-10-05"
 output: html_document
 ---
 
+# Project: Predict Uber Demand in New York
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Load necessary libraries
+```{r necessary_libraries}
+library(dplyr)
+library(geosphere) 
+library(leaflet)
+library(ggplot2)
+library(lubridate)
+```
+
+## Load the CSV files and over looking at it
+```{r load_data}
+train_raw_data <- read.csv("train_raw_data.csv")
+train_filtered_2000m_data <- read.csv("train_raw_data_dists_more_then_2000.csv")
+```
+
+### train_raw_data.csv
+train_raw_data.csv: Contains all Uber pickups in NYC between April 1 and September 9, 2014, without filtering by distance.
+
+```{r raw_data_look}
+# Show the first 5 rows of each train_raw_data
+head(train_raw_data, 5)
+
+# Summary statistics for the full dataset
+summary(train_raw_data)
+```
+* Latitude (lat) ranges from 39.66 to 42.12, and Longitude (lon) ranges from -74.93 to -72.07, indicating the pickups occurred within the New York area.
+
+* The median and mean values for both latitude (around 40.74) and longitude (around -73.97) show that most pickups took place near the central part of New York, close to the Empire State Building.
+
+### train_raw_data_dists_more_then_2000.csv
+train_raw_data_dists_more_then_2000.csv: Contains only Uber pickups outside a 2000-meter radius from the Empire State Building.
+
+```{r filtered_data_look}
+# Show the first 5 rows of each train_raw_data
+head(train_filtered_2000m_data, 5)
+
+# Summary statistics for the filtered dataset
+summary(train_filtered_2000m_data)
+```
+* Similar latitude and longitude ranges, but these pickups occurred outside a 2000-meter radius from the Empire State Building.
+
+* The dist column represents the distance from the Empire State Building, ranging from 2000 meters to 220,970 meters (about 221 km). The median distance is 4083 meters.
+
+#### Features Explanation:
+Datasets train_raw_data.csv and train_raw_data_dists_more_then_2000.csv features:
+
+1. datetime: This column represents the date and time when the Uber pickup occurred.
+
+2. lat: This column contains the latitude of the pickup location, indicating the geographical position (north-south axis) of the ride.
+
+3. lon: This column contains the longitude of the pickup location, representing the geographical position (east-west axis) of the ride.
+
+4. base: This column includes a code representing the Uber base or the specific area/company that managed the ride.
+
+5. dist (only for train_raw_data_dists_more_then_2000.csv): This column represents the distance (in meters) between the pickup location and the Empire State Building. All values in this dataset are greater than 2000 meters, as the dataset is filtered to include only pickups beyond this radius.
+
+```{r interactive_map}
+# Define latitude, longitude, and radius
+lat <- 40.7484 # Empire State Building coordinates
+lon <- -73.985 # Empire State Building coordinates
+
+small_radius <- 1000  # Radius in meters
+big_radius <- 2000  # Radius in meters
+
+# Create the leaflet map
+leaflet() %>%
+  addTiles() %>%  # Add default OpenStreetMap tiles
+  addMarkers(lng = lon, lat = lat, popup = "Empire State Building") %>%  # 
+  addCircles(lng = lon, lat = lat, radius = small_radius, color = "blue", fillOpacity = 0.2) %>% # 
+  addCircles(lng = lon, lat = lat, radius = big_radius, color = "red", fillOpacity = 0.1)  #
+```
+
 ## Part A: Data Rearrangement
 
-### 1. Filtering Data
+### Filtering Data
+Only relevant for the train_raw_data.csv data:
+```{r}
+# Define Empire State Building coordinates
+empire_state_coords <- c(-73.985, 40.7484)  # Longitude, Latitude
+
+# Calculate the distance from each pickup to the Empire State Building
+train_raw_data <- train_raw_data %>%
+  mutate(dist = distHaversine(cbind(lon, lat), empire_state_coords))
+```
+
+```{r}
+# Add a new column 'distance_category' to classify the distance
+train_raw_data <- train_raw_data %>%
+  mutate(distance_category = ifelse(dist <= 1000, "<= 1000 meters", "> 1000 meters"))
+
+ggplot(train_raw_data, aes(x = distance_category)) +
+  geom_bar(fill = c("lightblue", "lightgreen")) +
+  labs(title = "Count of Uber Pickups within and beyond 1000 meters",
+       x = "Distance Category",
+       y = "Count of Pickups") +
+  theme_minimal()
+```
+
+We can see that there are many Uber pickups occurred beyond the 1000-meter radius that need to be filltered.
+
 ```{r filtering_data}
-# קוד לסינון נתונים בתוך רדיוס של 1000 מטר
+# Filter data to include only pickups within a 1000-meter radius and remove the 'distance_category' column
+train_filtered_1000m_data <- train_raw_data %>%
+  filter(dist <= 1000) %>%
+  select(-distance_category)  # Remove the 'distance_category' column if it exists
 ```
 
-### 2. Time Intervals
+Making sure the filltered worked:
+```{r}
+# Check the maximum distance in the filtered dataset
+max_distance <- max(train_filtered_1000m_data$dist)
+
+# Print the maximum distance
+print(max_distance)
+```
+### Filtering by Time
+We need to make sure the timestamp column is formatted correctly.
+* The timestamp format (for example: 2014-04-01T00:02:00Z) includes a "T" between the date and time and ends with a "Z", which indicates that the time is in UTC (Coordinated Universal Time).
+We need to adjust the format argument to handle this format. Additionally, we can specify the time zone using tz = "UTC" to make sure the conversion handles the UTC time correctly.
+```{r}
+# Ensure the 'timestamp' column is in POSIXct format, handling the 'T' and 'Z' characters
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  mutate(timestamp = as.POSIXct(timestamp, format="%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+
+train_filtered_2000m_data <- train_filtered_2000m_data %>%
+  mutate(timestamp = as.POSIXct(timestamp, format="%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+```
+
+Visualize the distribution of Uber pickups by hour to check if there are any outside 17:00-00:00:
+```{r}
+# For 1000-meter filtered data
+ggplot(train_filtered_1000m_data, aes(x = hour(timestamp))) +
+  geom_bar(fill = "lightblue") +
+  labs(title = "Distribution of Uber Pickups by Hour (1000m Data)",
+       x = "Hour of Day",
+       y = "Count of Pickups") +
+  scale_x_continuous(breaks = 0:23) +  # Set x-axis for hours (0 to 23)
+  theme_minimal()
+```
+
+```{r}
+# For 2000-meter filtered data
+ggplot(train_filtered_2000m_data, aes(x = hour(timestamp))) +
+  geom_bar(fill = "lightgreen") +
+  labs(title = "Distribution of Uber Pickups by Hour (2000m Data)",
+       x = "Hour of Day",
+       y = "Count of Pickups") +
+  scale_x_continuous(breaks = 0:23) +  # Set x-axis for hours (0 to 23)
+  theme_minimal()
+```
+As seen in the two graphs, there are significant amounts of data outside the desired range of 17:00 to 00:00 for both datasets (1000m and 2000m data). Therefore, to focus on the data for pickups that occurred between 17:00 and 00:00, we will apply a filter to exclude the hours outside this range.
+
+Filter data to include only pickups between 17:00 and 00:00:
+```{r}
+# For 1000-meter filtered data
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  filter(hour(timestamp) >= 17 | hour(timestamp) == 0)
+
+# For 2000-meter filtered data
+train_filtered_2000m_data <- train_filtered_2000m_data %>%
+  filter(hour(timestamp) >= 17 | hour(timestamp) == 0)
+```
+
+Check the Results:
+```{r}
+# Create a data frame with all hours from 0 to 23
+hours <- data.frame(hour = 0:23)
+```
+
+```{r}
+# For 1000-meter filtered data
+# Extract the hour and count the number of pickups per hour
+hourly_1000m <- train_filtered_1000m_data %>%
+  mutate(hour = hour(timestamp)) %>%
+  count(hour)
+
+# Merge the hourly counts with the 'hours' data frame to include missing hours as 0
+hourly_1000m_complete <- merge(hours, hourly_1000m, by = "hour", all.x = TRUE)
+hourly_1000m_complete[is.na(hourly_1000m_complete)] <- 0  # Replace NAs with 0
+
+# Plot for 1000-meter filtered data
+ggplot(hourly_1000m_complete, aes(x = hour, y = n)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  labs(title = "Filtered Uber Pickups by Hour (1000m Data, Expected: 17:00 to 00:00)",
+       x = "Hour of Day",
+       y = "Count of Pickups") +
+  scale_x_continuous(breaks = 0:23) +  # Show all hours from 0 to 23 on x-axis
+  theme_minimal()
+```
+```{r}
+# For 2000-meter filtered data
+# Extract the hour and count the number of pickups per hour
+hourly_2000m <- train_filtered_2000m_data %>%
+  mutate(hour = hour(timestamp)) %>%
+  count(hour)
+
+# Merge the hourly counts with the 'hours' data frame to include missing hours as 0
+hourly_2000m_complete <- merge(hours, hourly_2000m, by = "hour", all.x = TRUE)
+hourly_2000m_complete[is.na(hourly_2000m_complete)] <- 0  # Replace NAs with 0
+
+# Plot for 2000-meter filtered data
+ggplot(hourly_2000m_complete, aes(x = hour, y = n)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  labs(title = "Filtered Uber Pickups by Hour (2000m Data, Expected: 17:00 to 00:00)",
+       x = "Hour of Day",
+       y = "Count of Pickups") +
+  scale_x_continuous(breaks = 0:23) +  # Show all hours from 0 to 23 on x-axis
+  theme_minimal()
+```
+
+### Creating 15-Minute Intervals
+We're grouping the `timestamp` data into 15-minute intervals to make it easier to spot patterns and trends in Uber pickups. This lets us count how many pickups happen in each time block, helping us better understand demand and predict future activity.
+
 ```{r time_intervals}
-# קוד ליצירת מרווחי זמן של 15 דקות
+# For 1000-meter filtered data
+# Create the time_interval and count the number of pickups per interval
+pickup_counts_1000m <- train_filtered_1000m_data %>%
+  mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
+  group_by(time_interval) %>%
+  summarise(count_pickups_per_interval = n())
+
+# Join the pickup counts back to the original data to include all columns
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
+  left_join(pickup_counts_1000m, by = "time_interval") %>%
+  mutate(time_interval = format(time_interval, "%Y-%m-%d %H:%M:%S"))
+
+# Check the first few rows to see the results for 1000m data
+head(train_filtered_1000m_data)
 ```
 
-### 3. Data Cleaning
-```{r data_cleaning}
-# קוד לניקוי נתונים וטיפול בערכים חסרים
+```{r}
+# For 2000-meter filtered data
+# Create the time_interval and count the number of pickups per interval
+pickup_counts_2000m <- train_filtered_2000m_data %>%
+  mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
+  group_by(time_interval) %>%
+  summarise(count_pickups_per_interval = n())
+
+# Join the pickup counts back to the original data to include all columns
+train_filtered_2000m_data <- train_filtered_2000m_data %>%
+  mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
+  left_join(pickup_counts_2000m, by = "time_interval") %>%
+  mutate(time_interval = format(time_interval, "%Y-%m-%d %H:%M:%S"))
+
+# Check the first few rows to see the results for 2000m data
+head(train_filtered_2000m_data)
 ```
+
+Visualization that shows top 10 pickup counts for both the 1000-meter and 2000-meter filtered data:
+
+```{r}
+top_10_pickups_1000m <- pickup_counts_1000m %>%
+  arrange(desc(count_pickups_per_interval)) %>%
+  head(10)
+
+# Convert time_interval to a character with both date and time format
+top_10_pickups_1000m <- top_10_pickups_1000m %>%
+  mutate(time_interval = format(time_interval, "%Y-%m-%d %H:%M"))
+
+# Plot for 1000-meter filtered data
+ggplot(top_10_pickups_1000m, aes(x = time_interval, y = count_pickups_per_interval)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  labs(title = "Top 10 Pickup Intervals (1000m Radius)",
+       x = "Time Interval",
+       y = "Pickup Counts") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+1000-meter Radius:
+
+* The pickup counts in the top 10 intervals are around 150-175 pickups per interval.
+* The busiest intervals span across different dates, showing a peak around July 15, 2014, with pickups happening consistently between 17:45 and 18:30 on several days.
+* This indicates that Uber demand was high around these specific dates and times near the Empire State Building within a 1000-meter radius.
+
+```{r}
+# For 2000-meter filtered data
+# Select top 10 intervals with highest pickup counts
+top_10_pickups_2000m <- pickup_counts_2000m %>%
+  arrange(desc(count_pickups_per_interval)) %>%
+  head(10)
+
+# Convert time_interval to a character with both date and time format
+top_10_pickups_2000m <- top_10_pickups_2000m %>%
+  mutate(time_interval = format(time_interval, "%Y-%m-%d %H:%M"))
+
+# Plot for 2000-meter filtered data
+ggplot(top_10_pickups_2000m, aes(x = time_interval, y = count_pickups_per_interval)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  labs(title = "Top 10 Pickup Intervals (2000m Radius)",
+       x = "Time Interval",
+       y = "Pickup Counts") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+2000-meter Radius:
+
+* The pickup counts in the top 10 intervals are significantly higher, around 500 pickups per interval.
+* The busiest intervals are mostly concentrated on September 6, 2014, with intervals spanning between 17:15 and 23:30.
+* This shows that the Uber demand beyond a 2000-meter radius from the Empire State Building was much higher on that specific date, indicating a spike in activity.
+
+### Data Cleaning
+#### Dealing with NAs 
+```{r NAs}
+
+```
+
+#### Dealing with outliers
+```{r outliers}
+
+```
+
 
 ## Part B: Exploratory Data Analysis (EDA)
 
-### 1. Adding Columns
+### Adding Columns
 ```{r adding_columns}
 # קוד להוספת עמודות נוספות כמו יום בשבוע, שבוע בשנה וכו
 ```
 
-### 2. External Data Integration
+### External Data Integration
 ```{r external_data_integration}
 # קוד להוספת משתנים חיצוניים כמו נתוני מזג אוויר, מניות וכו
 ```
 
-### 3. Descriptive Statistics and Visualization
+### Descriptive Statistics and Visualization
 ```{r descriptive_statistics}
 # קוד לסטטיסטיקות תיאוריות ויצירת גרפים
 ```
 
 ## Part C: Forecast for the Future
 
-### 1. Model 1 - Full Data
+### Model 1 - Full Data
 ```{r model_1_full_data}
 # קוד לאימון המודל הראשון באמצעות הנתונים המלאים
 ```
 
-### 2. Model 2 - Filtered Data
+### Model 2 - Filtered Data
 ```{r model_2_filtered_data}
 # קוד לאימון המודל השני באמצעות הנתונים המסוננים (מחוץ לרדיוס 2000 מטר)
 ```

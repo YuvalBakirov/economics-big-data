@@ -317,6 +317,11 @@ ggplot(top_10_pickups_2000m, aes(x = time_interval, y = count_pickups_per_interv
 
 ```
 
+#### Dealing with errors in the data
+```{r errors}
+
+```
+
 #### Dealing with outliers
 ```{r outliers}
 

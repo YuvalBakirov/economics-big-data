@@ -1,0 +1,64 @@
+---
+title: "big_data_final_task"
+author: "Ariel&Eitan&Yuval"
+date: "2024-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part A: Data Rearrangement
+
+### 1. Filtering Data
+```{r filtering_data}
+# קוד לסינון נתונים בתוך רדיוס של 1000 מטר
+```
+
+### 2. Time Intervals
+```{r time_intervals}
+# קוד ליצירת מרווחי זמן של 15 דקות
+```
+
+### 3. Data Cleaning
+```{r data_cleaning}
+# קוד לניקוי נתונים וטיפול בערכים חסרים
+```
+
+## Part B: Exploratory Data Analysis (EDA)
+
+### 1. Adding Columns
+```{r adding_columns}
+# קוד להוספת עמודות נוספות כמו יום בשבוע, שבוע בשנה וכו
+```
+
+### 2. External Data Integration
+```{r external_data_integration}
+# קוד להוספת משתנים חיצוניים כמו נתוני מזג אוויר, מניות וכו
+```
+
+### 3. Descriptive Statistics and Visualization
+```{r descriptive_statistics}
+# קוד לסטטיסטיקות תיאוריות ויצירת גרפים
+```
+
+## Part C: Forecast for the Future
+
+### 1. Model 1 - Full Data
+```{r model_1_full_data}
+# קוד לאימון המודל הראשון באמצעות הנתונים המלאים
+```
+
+### 2. Model 2 - Filtered Data
+```{r model_2_filtered_data}
+# קוד לאימון המודל השני באמצעות הנתונים המסוננים (מחוץ לרדיוס 2000 מטר)
+```
+
+## Conclusion
+```{r conclusion}
+# סיכום הממצאים והתובנות מהמודלים
+```
+```
+
+תוכל להעתיק ולהדביק את זה בקובץ ה-RMarkdown שלך ולהתחיל למלא אותו בקוד. אם תצטרך עזרה נוספת, אני כאן!

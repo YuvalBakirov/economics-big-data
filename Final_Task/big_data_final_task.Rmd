@@ -443,12 +443,83 @@ if (nrow(invalid_lat_lon_base_2000m) > 0) {
 
 ```
 
+```{r}
+train_filtered_1000m_data
+```
+
 
 ## Part B: Exploratory Data Analysis (EDA)
 
 ### Adding Columns
-```{r adding_columns}
-# קוד להוספת עמודות נוספות כמו יום בשבוע, שבוע בשנה וכו
+We added in the Data Rearrangement part:
+1. count_pickups_per_interval: this is how many pickups were is this specific 15-min interval.
+
+2. dist (for the 1000m data): this is the distance from each pickup to the Empire State Building
+
+We will also add:
+1.is_weekend: Extract whether the pickup occurred on a weekday or weekend. This is important because pickup patterns often differ on weekdays versus weekends.
+
+2. time_of_day: Group pickup times into time categories such as morning, afternoon, evening, and night to capture demand patterns.
+
+Add is_weekend Feature
+```{r adding_is_weekend}
+# For 1000-meter filtered data
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  mutate(
+    # Extract day of the week and check if it's a weekend (Saturday or Sunday)
+    day_of_week = wday(timestamp, label = TRUE),
+    is_weekend = ifelse(day_of_week %in% c("Sat", "Sun"), 1, 0)
+  )
+
+# For 2000-meter filtered data
+train_filtered_2000m_data <- train_filtered_2000m_data %>%
+  mutate(
+    # Extract day of the week and check if it's a weekend (Saturday or Sunday)
+    day_of_week = wday(timestamp, label = TRUE),
+    is_weekend = ifelse(day_of_week %in% c("Sat", "Sun"), 1, 0)
+  )
+
+# Check the first few rows for 1000m and 2000m data
+head(train_filtered_1000m_data)
+head(train_filtered_2000m_data)
+```
+Add time_of_day Feature:
+
+Night: 00:00–05:59
+Morning: 06:00–11:59
+Afternoon: 12:00–17:59
+Evening: 18:00–23:59
+
+Here’s the code for adding the time_of_day feature using one-hot encoding, broken down into separate dummy features (Night, Morning, Afternoon, Evening):
+```{r adding_time_of_day_1000}
+# For 1000-meter filtered data
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  mutate(
+    hour = hour(timestamp),
+    # Create dummy variables for time of day
+    is_night = ifelse(hour >= 0 & hour < 6, 1, 0),
+    is_morning = ifelse(hour >= 6 & hour < 12, 1, 0),
+    is_afternoon = ifelse(hour >= 12 & hour < 18, 1, 0),
+    is_evening = ifelse(hour >= 18 & hour <= 23, 1, 0)
+  )
+
+head(train_filtered_1000m_data)
+```
+
+
+```{r adding_time_of_day_2000}
+# For 2000-meter filtered data
+train_filtered_2000m_data <- train_filtered_2000m_data %>%
+  mutate(
+    hour = hour(timestamp),
+    # Create dummy variables for time of day
+    is_night = ifelse(hour >= 0 & hour < 6, 1, 0),
+    is_morning = ifelse(hour >= 6 & hour < 12, 1, 0),
+    is_afternoon = ifelse(hour >= 12 & hour < 18, 1, 0),
+    is_evening = ifelse(hour >= 18 & hour <= 23, 1, 0)
+  )
+
+head(train_filtered_2000m_data)
 ```
 
 ### External Data Integration

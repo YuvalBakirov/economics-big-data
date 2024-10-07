@@ -313,17 +313,133 @@ ggplot(top_10_pickups_2000m, aes(x = time_interval, y = count_pickups_per_interv
 
 ### Data Cleaning
 #### Dealing with NAs 
+Check for NA in the datasets:
 ```{r NAs}
+# Check for NA values in the 1000m data
+na_count_1000m <- sum(is.na(train_filtered_1000m_data))
+print(paste("Number of NA values in 1000m data:", na_count_1000m))
 
+# Check for NA values in the 2000m data
+na_count_2000m <- sum(is.na(train_filtered_2000m_data))
+print(paste("Number of NA values in 2000m data:", na_count_2000m))
 ```
+There is no NAs in both of the data sets.
 
 #### Dealing with errors in the data
+Check that there are no errors in timestamps (like invalid days, months, hours, minutes, or seconds):
 ```{r errors}
+# Extract the individual components from the timestamp
+# Check for invalid date or time values in 1000m data (without modifying the original data)
+invalid_dates_1000m <- train_filtered_1000m_data %>%
+  mutate(year = year(timestamp),
+         month = month(timestamp),
+         day = day(timestamp),
+         hour = hour(timestamp),
+         minute = minute(timestamp),
+         second = second(timestamp)) %>%
+  filter(month > 12 | day > 31 | hour > 23 | minute > 59 | second > 59)
+
+# Check for invalid date or time values in 2000m data (without modifying the original data)
+invalid_dates_2000m <- train_filtered_2000m_data %>%
+  mutate(year = year(timestamp),
+         month = month(timestamp),
+         day = day(timestamp),
+         hour = hour(timestamp),
+         minute = minute(timestamp),
+         second = second(timestamp)) %>%
+  filter(month > 12 | day > 31 | hour > 23 | minute > 59 | second > 59)
+
+# Check and print results for 1000m data
+if (nrow(invalid_dates_1000m) > 0) {
+  print("Invalid timestamps found in 1000m data:")
+  print(invalid_dates_1000m)
+} else {
+  print("All timestamps in 1000m data are valid.")
+}
+
+# Check and print results for 2000m data
+if (nrow(invalid_dates_2000m) > 0) {
+  print("Invalid timestamps found in 2000m data:")
+  print(invalid_dates_2000m)
+} else {
+  print("All timestamps in 2000m data are valid.")
+}
+
+
+```
+Check if all the dates in the timestamp column are within the correct range (April 1, 2014, to September 9, 2014):
+```{r}
+# Define the valid date range
+start_date <- as.POSIXct("2014-04-01 00:00:00", tz = "UTC")
+end_date <- as.POSIXct("2014-09-09 23:59:59", tz = "UTC")
+
+# Check for dates outside the range in 1000m data
+invalid_dates_1000m <- train_filtered_1000m_data %>%
+  filter(timestamp < start_date | timestamp > end_date)
+
+# Check for dates outside the range in 2000m data
+invalid_dates_2000m <- train_filtered_2000m_data %>%
+  filter(timestamp < start_date | timestamp > end_date)
+
+# Print results for 1000m data
+if (nrow(invalid_dates_1000m) > 0) {
+  print("Invalid timestamps found in 1000m data:")
+  print(invalid_dates_1000m)
+} else {
+  print("All timestamps in 1000m data are within the correct range.")
+}
+
+# Print results for 2000m data
+if (nrow(invalid_dates_2000m) > 0) {
+  print("Invalid timestamps found in 2000m data:")
+  print(invalid_dates_2000m)
+} else {
+  print("All timestamps in 2000m data are within the correct range.")
+}
+```
+Check for errors in  Latitude (lat), Longitude (lon) and Base (base):
+
+1. Latitude values should range between -90 and 90 (since latitude represents how far north or south a location is from the equator).
+
+2.Longitude values should range between -180 and 180 (since longitude represents how far east or west a location is from the prime meridian).
+
+3. The base column typically represents the Uber base or dispatch center. This should contain valid base codes (likely alphanumeric strings)
+```{r}
+# Check for errors in 'lat', 'lon', and 'base'
+
+# For 1000m data
+invalid_lat_lon_base_1000m <- train_filtered_1000m_data %>%
+  filter(lat < -90 | lat > 90 | 
+         lon < -180 | lon > 180 | 
+         is.na(base))
+
+# For 2000m data
+invalid_lat_lon_base_2000m <- train_filtered_2000m_data %>%
+  filter(lat < -90 | lat > 90 | 
+         lon < -180 | lon > 180 | 
+         is.na(base))
+
+# Print results for 1000m data
+if (nrow(invalid_lat_lon_base_1000m) > 0) {
+  print("Invalid latitude, longitude, or missing base found in 1000m data:")
+  print(invalid_lat_lon_base_1000m)
+} else {
+  print("All lat, lon, and base values in 1000m data are valid.")
+}
+
+# Print results for 2000m data
+if (nrow(invalid_lat_lon_base_2000m) > 0) {
+  print("Invalid latitude, longitude, or missing base found in 2000m data:")
+  print(invalid_lat_lon_base_2000m)
+} else {
+  print("All lat, lon, and base values in 2000m data are valid.")
+}
 
 ```
 
 #### Dealing with outliers
 ```{r outliers}
+# not sure if needed
 
 ```
 

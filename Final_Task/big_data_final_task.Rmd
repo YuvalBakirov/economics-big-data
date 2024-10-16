@@ -50,6 +50,8 @@ head(train_filtered_2000m_data, 5)
 # Summary statistics for the filtered dataset
 summary(train_filtered_2000m_data)
 ```
+
+
 * Similar latitude and longitude ranges, but these pickups occurred outside a 2000-meter radius from the Empire State Building.
 
 * The dist column represents the distance from the Empire State Building, ranging from 2000 meters to 220,970 meters (about 221 km). The median distance is 4083 meters.
@@ -95,6 +97,63 @@ empire_state_coords <- c(-73.985, 40.7484)  # Longitude, Latitude
 train_raw_data <- train_raw_data %>%
   mutate(dist = distHaversine(cbind(lon, lat), empire_state_coords))
 ```
+
+
+#### Is 2000m is in train_raw?
+```{r filtered_data_look}
+
+str(train_filtered_2000m_data)
+str(train_raw_data)
+
+# Ensure both data frames have the same columns before comparison
+common_columns <- intersect(names(train_filtered_2000m_data), names(train_raw_data))
+
+# Select only the common columns for comparison
+train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
+train_raw_data_common <- train_raw_data %>% select(all_of(common_columns))
+
+# Now use setdiff to find rows in train_filtered_2000m_data not in train_raw_data
+missing_rows <- setdiff(train_filtered_2000m_data_common, train_raw_data_common)
+
+# Check if any rows are missing
+if (nrow(missing_rows) == 0) {
+  print("All rows in train_filtered_2000m_data are present in train_raw_data.")
+} else {
+  print("Some rows in train_filtered_2000m_data are missing from train_raw_data.")
+  print(missing_rows)
+}
+
+```
+So, 2,623  rows in 2000m are unique - (not in train_raw_data)
+
+#### Is 2000 above from train_data in 2000m?
+```{r filtered_data_look}
+
+# Create a new dataframe with rows where dist is greater than or equal to 2000
+check_train_raw_above_2000 <- train_raw_data %>%
+  filter(dist >= 2000)
+
+# Ensure both data frames have the same columns before comparison
+common_columns <- intersect(names(check_train_raw_above_2000), names(train_filtered_2000m_data))
+
+# Select only common columns for comparison
+check_train_raw_above_2000_common <- check_train_raw_above_2000 %>% select(all_of(common_columns))
+train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
+
+# Now use setdiff
+missing_rows <- setdiff(check_train_raw_above_2000_common, train_filtered_2000m_data_common)
+
+# Check if any rows are missing
+if (nrow(missing_rows) == 0) {
+  print("All rows in check_train_raw_above_2000 are present in train_filtered_2000m_data.")
+} else {
+  print("Some rows in check_train_raw_above_2000 are missing from train_filtered_2000m_data.")
+  print(missing_rows)
+}
+
+
+```
+
 
 ```{r}
 # Add a new column 'distance_category' to classify the distance

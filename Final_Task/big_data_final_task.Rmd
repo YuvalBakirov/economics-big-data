@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r necessary_libraries}
 library(dplyr)
 library(geosphere) 
-library(leaflet)
+# library(leaflet)
 library(ggplot2)
 library(lubridate)
 library(readr)
@@ -279,14 +279,33 @@ plot_hourly_pickup_distribution(train_filtered_2000m_data, hours,
 ### Creating 15-Minute Intervals
 We're grouping the `timestamp` data into 15-minute intervals to make it easier to spot patterns and trends in Uber pickups. This lets us count how many pickups happen in each time block, helping us better understand demand and predict future activity.
 
-```{r time_intervals}
-create_time_intervals <- function(data) {
-  # Create the time_interval and count the number of pickups per interval
+The function takes a dataset as input, creates the 15-minute time intervals, and calculates the pickup counts per interval:
+
+```{r}
+create_pickup_counts <- function(data) {
   pickup_counts <- data %>%
     mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
     group_by(time_interval) %>%
     summarise(count_pickups_per_interval = n())
   
+  return(pickup_counts)
+}
+```
+
+```{r}
+# Use the function for 1000m data
+pickup_counts_1000m <- create_pickup_counts(train_filtered_1000m_data)
+head(pickup_counts_1000m)
+```
+
+```{r}
+# Use the function for 2000m data
+pickup_counts_2000m <- create_pickup_counts(train_filtered_2000m_data)
+head(pickup_counts_2000m)
+```
+
+```{r time_intervals}
+create_time_intervals <- function(data, pickup_counts) {
   # Join the pickup counts back to the original data to include all columns
   data_with_intervals <- data %>%
     mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
@@ -299,7 +318,7 @@ create_time_intervals <- function(data) {
 
 ```{r}
 # Apply the function to the 1000-meter filtered data
-train_filtered_1000m_data <- create_time_intervals(train_filtered_1000m_data)
+train_filtered_1000m_data <- create_time_intervals(train_filtered_1000m_data, pickup_counts_1000m)
 
 # Check the first few rows of the updated 1000m dataset
 head(train_filtered_1000m_data)
@@ -307,7 +326,7 @@ head(train_filtered_1000m_data)
 
 ```{r}
 # Apply the function to the 2000-meter filtered data
-train_filtered_2000m_data <- create_time_intervals(train_filtered_2000m_data)
+train_filtered_2000m_data <- create_time_intervals(train_filtered_2000m_data, pickup_counts_1000m)
 
 # Check the first few rows of the updated 2000m dataset
 train_filtered_2000m_data
@@ -316,7 +335,7 @@ train_filtered_2000m_data
 Visualization that shows top 10 pickup counts for both the 1000-meter and 2000-meter filtered data:
 
 ```{r}
-plot_top_10_pickup_intervals <- function(data, title, fill_color) {
+plot_top_10_pickup_intervals <- function(data, title, color) {
   # Arrange the data to get the top 10 intervals with the highest pickup counts
   top_10_pickups <- data %>%
     arrange(desc(count_pickups_per_interval)) %>%
@@ -328,7 +347,7 @@ plot_top_10_pickup_intervals <- function(data, title, fill_color) {
   
   # Plot the top 10 intervals
   ggplot(top_10_pickups, aes(x = time_interval, y = count_pickups_per_interval)) +
-    geom_bar(stat = "identity", fill = fill_color, width = 0.6) + # Adjust width for spacing
+    geom_bar(stat = "identity", fill = color, width = 0.6) + # Adjust width for spacing
     labs(title = title,
          x = "Time Interval",
          y = "Pickup Counts") +
@@ -341,6 +360,17 @@ plot_top_10_pickup_intervals <- function(data, title, fill_color) {
     scale_x_discrete(labels = function(x) str_wrap(x, width = 10))  # Wrap the x-axis labels for better spacing
 }
 ```
+
+```{r}
+# Create the time_interval and count the number of pickups per interval for 1000m data
+pickup_counts_1000m1 <- train_filtered_1000m_data %>%
+  mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
+  group_by(time_interval) %>%
+  summarise(count_pickups_per_interval = n())
+
+pickup_counts_1000m1
+```
+
 
 ```{r}
 # Plot for 1000-meter filtered data (lightblue color)

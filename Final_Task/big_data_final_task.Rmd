@@ -22,10 +22,11 @@ library(readr)
 library(stringr)
 ```
 
-## Load the CSV files and over looking at it
+## Load the CSV files
 ```{r load_data}
 train_raw_data <- read.csv("train_raw_data.csv")
 train_filtered_2000m_data <- read.csv("train_raw_data_dists_more_then_2000.csv")
+test_data <- read.csv("test_set.csv")
 ```
 
 ### train_raw_data.csv
@@ -53,7 +54,6 @@ head(train_filtered_2000m_data, 5)
 summary(train_filtered_2000m_data)
 ```
 
-
 * Similar latitude and longitude ranges, but these pickups occurred outside a 2000-meter radius from the Empire State Building.
 
 * The dist column represents the distance from the Empire State Building, ranging from 2000 meters to 220,970 meters (about 221 km). The median distance is 4083 meters.
@@ -71,6 +71,21 @@ Datasets train_raw_data.csv and train_raw_data_dists_more_then_2000.csv features
 
 5. dist (only for train_raw_data_dists_more_then_2000.csv): This column represents the distance (in meters) between the pickup location and the Empire State Building. All values in this dataset are greater than 2000 meters, as the dataset is filtered to include only pickups beyond this radius.
 
+### test_set.csv
+```{r}
+test_data
+```
+We can observe that the test file contains time intervals in 15-minute increments, currently stored in character format. We need to convert these time intervals to POSIXct format for further analysis. The objective is then to use this data to predict the number of pickups using a trained model.
+
+```{r}
+test_fixed_data <- test_data %>%
+  mutate(time_interval = as.POSIXct(time_interval, format="%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+
+test_fixed_data
+```
+Note: In order to predict the number_of_pickups using a ML model, our test data should have the same features that were used to train the model.So, it is crucial to ensure that all the transformations, feature engineering steps, creating new features and any external data applied during the training process are also applied to the test data. Ensuring consistency in features allows the model to process the test data accurately and make reliable predictions based on the learned relationships during training.
+
+Looking at the map:
 ```{r interactive_map}
 # Define latitude, longitude, and radius
 lat <- 40.7484 # Empire State Building coordinates
@@ -86,20 +101,6 @@ leaflet() %>%
   addCircles(lng = lon, lat = lat, radius = small_radius, color = "blue", fillOpacity = 0.2) %>% # 
   addCircles(lng = lon, lat = lat, radius = big_radius, color = "red", fillOpacity = 0.1)  #
 ```
-
-## Part A: Data Rearrangement
-
-### Filtering Data
-Only relevant for the train_raw_data.csv data:
-```{r}
-# Define Empire State Building coordinates
-empire_state_coords <- c(-73.985, 40.7484)  # Longitude, Latitude
-
-# Calculate the distance from each pickup to the Empire State Building
-train_raw_data <- train_raw_data %>%
-  mutate(dist = distHaversine(cbind(lon, lat), empire_state_coords))
-```
-
 
 #### Is 2000m is in train_raw?
 ```{r filtered_data_look}
@@ -154,6 +155,18 @@ So, 2,623  rows in 2000m are unique - (not in train_raw_data)
 # }
 ```
 
+## Part A: Data Rearrangement
+
+### Filtering Data
+Only relevant for the train_raw_data.csv data:
+```{r}
+# Define Empire State Building coordinates
+empire_state_coords <- c(-73.985, 40.7484)  # Longitude, Latitude
+
+# Calculate the distance from each pickup to the Empire State Building
+train_raw_data <- train_raw_data %>%
+  mutate(dist = distHaversine(cbind(lon, lat), empire_state_coords))
+```
 
 ```{r}
 # Add a new column 'distance_category' to classify the distance
@@ -284,6 +297,8 @@ We are left with only rows with the desired time range!
 
 ### Creating 15-Minute Intervals
 We're grouping the `timestamp` data into 15-minute intervals to make it easier to spot patterns and trends in Uber pickups. This lets us count how many pickups happen in each time block, helping us better understand demand and predict future activity.
+
+This action is critical because our test data is already divided into 15-minute intervals, so we need to apply the same approach to our training data to ensure consistency. By creating the number_of_pickups feature (the label), we align both datasets in terms of granularity, enabling the model to learn from the training data and make accurate predictions on the test data.
 
 The function takes a dataset as input, creates the 15-minute time intervals, and calculates the pickup counts per interval:
 
@@ -423,7 +438,7 @@ print(paste("Number of NA values in 1000m data:", na_count_1000m))
 na_count_2000m <- sum(is.na(train_filtered_2000m_data))
 print(paste("Number of NA values in 2000m data:", na_count_2000m))
 ```
-There is no NAs in both of the filltered data set!
+There is no NAs in both of the filltered data sets!
 
 #### Dealing with errors in the data
 Check that there are no errors in timestamps (like invalid days, months, hours, minutes, or seconds):
@@ -757,7 +772,8 @@ By adding both a categorical feature and dummy variables for time_of_day & base,
 
 #### Data from the Web: External Data Integration
 
-Here is a CSV of the history weather bulk for Empire State Building (40.75,-73.99) from January 01, 2014 to December 31, 2014
+Here is a CSV of the history weather bulk for Empire State Building (40.75,-73.99) from January 01, 2014 to December 31, 2014.
+* The parameters of the data explained here: https://openweathermap.org/history-bulk
 ```{r}
 # Load the CSV file
 weather_data <- read_csv("empire-state-weather-2014.csv")
@@ -816,12 +832,14 @@ train_filtered_1000m_data
 train_filtered_2000m_data <- rounded_timestamp(train_filtered_1000m_data)
 train_filtered_2000m_data
 ```
-
+```{r}
+head(weather_data)
+```
 
 ```{r}
 # Select only the required columns from the weather data
 weather_data_selected <- weather_data %>%
-  select(timestamp, temp, humidity, wind_speed, is_snowing_last_hour)
+  select(timestamp, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour)
 
 # Merge the weather data with the 1000m dataset using 'rounded_timestamp'
 new_features_1000m_data <- train_filtered_1000m_data %>%
@@ -840,6 +858,23 @@ new_features_2000m_data <- train_filtered_2000m_data %>%
 head(new_features_2000m_data)
 ```
 
+Lets check NAs after adding new features:
+```{r}
+# For 1000m data
+nas_1000m <- count_nas_per_column(train_filtered_1000m_data)
+print("NA counts for 1000m data:")
+print(nas_1000m)
+```
+
+```{r}
+# For 2000m data
+nas_2000m <- count_nas_per_column(train_filtered_2000m_data)
+print("NA counts for 2000m data:")
+print(nas_2000m)
+
+```
+No NAs!
+
 ### 2. Exploratory Analysis
 #### Descriptive Statistics and Visualization
 ```{r descriptive_statistics}
@@ -847,6 +882,9 @@ head(new_features_2000m_data)
 ```
 
 ## Part C: Forecast for the Future
+
+###Finak Data for Modeling
+Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final training dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
 
 ### Model 1 - Full Data
 ```{r model_1_full_data}

@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r necessary_libraries}
 library(dplyr)
 library(geosphere) 
-# library(leaflet)
+library(leaflet)
 library(ggplot2)
 library(lubridate)
 library(readr)
@@ -104,26 +104,26 @@ train_raw_data <- train_raw_data %>%
 #### Is 2000m is in train_raw?
 ```{r filtered_data_look}
 
-str(train_filtered_2000m_data)
-str(train_raw_data)
-
-# Ensure both data frames have the same columns before comparison
-common_columns <- intersect(names(train_filtered_2000m_data), names(train_raw_data))
-
-# Select only the common columns for comparison
-train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
-train_raw_data_common <- train_raw_data %>% select(all_of(common_columns))
-
-# Now use setdiff to find rows in train_filtered_2000m_data not in train_raw_data
-missing_rows <- setdiff(train_filtered_2000m_data_common, train_raw_data_common)
-
-# Check if any rows are missing
-if (nrow(missing_rows) == 0) {
-  print("All rows in train_filtered_2000m_data are present in train_raw_data.")
-} else {
-  print("Some rows in train_filtered_2000m_data are missing from train_raw_data.")
-  print(missing_rows)
-}
+# str(train_filtered_2000m_data)
+# str(train_raw_data)
+# 
+# # Ensure both data frames have the same columns before comparison
+# common_columns <- intersect(names(train_filtered_2000m_data), names(train_raw_data))
+# 
+# # Select only the common columns for comparison
+# train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
+# train_raw_data_common <- train_raw_data %>% select(all_of(common_columns))
+# 
+# # Now use setdiff to find rows in train_filtered_2000m_data not in train_raw_data
+# missing_rows <- setdiff(train_filtered_2000m_data_common, train_raw_data_common)
+# 
+# # Check if any rows are missing
+# if (nrow(missing_rows) == 0) {
+#   print("All rows in train_filtered_2000m_data are present in train_raw_data.")
+# } else {
+#   print("Some rows in train_filtered_2000m_data are missing from train_raw_data.")
+#   print(missing_rows)
+# }
 
 ```
 So, 2,623  rows in 2000m are unique - (not in train_raw_data)
@@ -131,27 +131,27 @@ So, 2,623  rows in 2000m are unique - (not in train_raw_data)
 #### Is 2000 above from train_data in 2000m?
 ```{r filtered_data_look}
 
-# Create a new dataframe with rows where dist is greater than or equal to 2000
-check_train_raw_above_2000 <- train_raw_data %>%
-  filter(dist >= 2000)
-
-# Ensure both data frames have the same columns before comparison
-common_columns <- intersect(names(check_train_raw_above_2000), names(train_filtered_2000m_data))
-
-# Select only common columns for comparison
-check_train_raw_above_2000_common <- check_train_raw_above_2000 %>% select(all_of(common_columns))
-train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
-
-# Now use setdiff
-missing_rows <- setdiff(check_train_raw_above_2000_common, train_filtered_2000m_data_common)
-
-# Check if any rows are missing
-if (nrow(missing_rows) == 0) {
-  print("All rows in check_train_raw_above_2000 are present in train_filtered_2000m_data.")
-} else {
-  print("Some rows in check_train_raw_above_2000 are missing from train_filtered_2000m_data.")
-  print(missing_rows)
-}
+# # Create a new dataframe with rows where dist is greater than or equal to 2000
+# check_train_raw_above_2000 <- train_raw_data %>%
+#   filter(dist >= 2000)
+# 
+# # Ensure both data frames have the same columns before comparison
+# common_columns <- intersect(names(check_train_raw_above_2000), names(train_filtered_2000m_data))
+# 
+# # Select only common columns for comparison
+# check_train_raw_above_2000_common <- check_train_raw_above_2000 %>% select(all_of(common_columns))
+# train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
+# 
+# # Now use setdiff
+# missing_rows <- setdiff(check_train_raw_above_2000_common, train_filtered_2000m_data_common)
+# 
+# # Check if any rows are missing
+# if (nrow(missing_rows) == 0) {
+#   print("All rows in check_train_raw_above_2000 are present in train_filtered_2000m_data.")
+# } else {
+#   print("Some rows in check_train_raw_above_2000 are missing from train_filtered_2000m_data.")
+#   print(missing_rows)
+# }
 ```
 
 
@@ -326,7 +326,7 @@ head(train_filtered_1000m_data)
 
 ```{r}
 # Apply the function to the 2000-meter filtered data
-train_filtered_2000m_data <- create_time_intervals(train_filtered_2000m_data, pickup_counts_1000m)
+train_filtered_2000m_data <- create_time_intervals(train_filtered_2000m_data, pickup_counts_2000m)
 
 # Check the first few rows of the updated 2000m dataset
 train_filtered_2000m_data
@@ -362,17 +362,6 @@ plot_top_10_pickup_intervals <- function(data, title, color) {
 ```
 
 ```{r}
-# Create the time_interval and count the number of pickups per interval for 1000m data
-pickup_counts_1000m1 <- train_filtered_1000m_data %>%
-  mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
-  group_by(time_interval) %>%
-  summarise(count_pickups_per_interval = n())
-
-pickup_counts_1000m1
-```
-
-
-```{r}
 # Plot for 1000-meter filtered data (lightblue color)
 plot_top_10_pickup_intervals(pickup_counts_1000m, "Top 10 Pickup Intervals (1000m Radius)", "lightblue")
 ```
@@ -395,6 +384,30 @@ plot_top_10_pickup_intervals(pickup_counts_2000m, "Top 10 Pickup Intervals (2000
 ### Data Cleaning
 #### Dealing with NAs 
 Check for NA in the datasets:
+
+```{r}
+# Function to count NAs for each column in the dataset
+count_nas_per_column <- function(data) {
+  na_counts <- sapply(data, function(col) sum(is.na(col)))
+  return(na_counts)
+}
+```
+
+```{r}
+# For 1000m data
+nas_1000m <- count_nas_per_column(train_filtered_1000m_data)
+print("NA counts for 1000m data:")
+print(nas_1000m)
+```
+
+```{r}
+# For 2000m data
+nas_2000m <- count_nas_per_column(train_filtered_2000m_data)
+print("NA counts for 2000m data:")
+print(nas_2000m)
+
+```
+
 ```{r NAs}
 # Check for NA values in the 1000m data
 na_count_1000m <- sum(is.na(train_filtered_1000m_data))
@@ -404,7 +417,7 @@ print(paste("Number of NA values in 1000m data:", na_count_1000m))
 na_count_2000m <- sum(is.na(train_filtered_2000m_data))
 print(paste("Number of NA values in 2000m data:", na_count_2000m))
 ```
-There is no NAs in both of the data sets.
+There is no NAs in both of the filltered data sets.
 
 #### Dealing with errors in the data
 Check that there are no errors in timestamps (like invalid days, months, hours, minutes, or seconds):
@@ -511,11 +524,18 @@ check_lat_lon_base <- function(data) {
 cat("For 1000m data:\n")
 check_lat_lon_base(train_filtered_1000m_data)
 ```
+
 ```{r}
 # Check for the 2000m data
 cat("For 2000m data:\n")
 check_lat_lon_base(train_filtered_2000m_data)
 ```
+Check base code:
+```{r}
+# todo 
+```
+
+
 #### Dealing with outliers
 ```{r outliers}
 # not sure if needed
@@ -528,8 +548,8 @@ train_filtered_1000m_data
 
 
 ## Part B: Exploratory Data Analysis (EDA)
-
-### Adding Columns
+### 1. Data Preparation
+#### Date base data: Adding Columns
 We added in the Data Rearrangement part:
 1. count_pickups_per_interval: this is how many pickups were is this specific 15-min interval.
 
@@ -558,6 +578,7 @@ add_is_weekend <- function(data) {
 train_filtered_1000m_data <- add_is_weekend(train_filtered_1000m_data)
 head(train_filtered_1000m_data)
 ```
+
 ```{r}
 # Apply the function to the 2000m dataset
 train_filtered_2000m_data <- add_is_weekend(train_filtered_2000m_data)
@@ -593,13 +614,14 @@ add_time_of_day <- function(data) {
 train_filtered_1000m_data <- add_time_of_day(train_filtered_1000m_data)
 head(train_filtered_1000m_data)
 ```
+
 ```{r}
 # Apply the function to the 2000m dataset
 train_filtered_2000m_data <- add_time_of_day(train_filtered_2000m_data)
 head(train_filtered_2000m_data)
 ```
 
-### External Data Integration
+#### Data from the Web: External Data Integration
 
 Here is a CSV of the history weather bulk for Empire State Building (40.75,-73.99) from January 01, 2014 to December 31, 2014
 ```{r}
@@ -618,6 +640,7 @@ weather_data <- weather_data %>%
 # Check the first few rows to see the new columns
 head(weather_data)
 ```
+
 Code to Check Minutes and Seconds in Timestamps:
 ```{r}
 # Filter rows where the minute or second is not 0
@@ -632,6 +655,7 @@ if (nrow(non_zero_minute_or_second) > 0) {
   print("All timestamps have 0 for both minutes and seconds.")
 }
 ```
+
 We have confirmed that the weather data is recorded at exact hourly intervals, meaning there are no variations in the minutes or seconds. Therefore, when merging this data with our Uber pickup data, we'll need to align our timestamps accordingly. Specifically, we will round our pickup timestamps to the nearest hour to ensure consistency and enable a seamless and accurate merging process. This alignment helps maintain the integrity of our analysis by matching the time intervals precisely.
 
 This code combines weather data (temperature, humidity, wind speed, and snow indication) with the Uber pickup data (1000m and 2000m datasets) using the timestamp as the key. If the minute value in the Uber pickup data (%M) is greater than 30, it uses the weather data from the next hour. Otherwise, it uses the weather data from the same hour.
@@ -685,7 +709,8 @@ new_features_2000m_data <- train_filtered_2000m_data %>%
 head(new_features_2000m_data)
 ```
 
-### Descriptive Statistics and Visualization
+### 2. Exploratory Analysis
+#### Descriptive Statistics and Visualization
 ```{r descriptive_statistics}
 # קוד לסטטיסטיקות תיאוריות ויצירת גרפים
 ```

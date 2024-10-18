@@ -67,7 +67,7 @@ Datasets train_raw_data.csv and train_raw_data_dists_more_then_2000.csv features
 
 3. lon: This column contains the longitude of the pickup location, representing the geographical position (east-west axis) of the ride.
 
-4. base: This column includes a code representing the Uber base or the specific area/company that managed the ride (License Number).
+4. Base:  This column includes a code representing the TLC (Taxi and Limousine Commission) base company code affiliated with the Uber pickup. This code identifies the licensed dispatching base that managed the Uber trip. Every ride must be affiliated with a TLC-licensed base, which is responsible for dispatching the trip.(License Number).
 
 5. dist (only for train_raw_data_dists_more_then_2000.csv): This column represents the distance (in meters) between the pickup location and the Empire State Building. All values in this dataset are greater than 2000 meters, as the dataset is filtered to include only pickups beyond this radius.
 
@@ -533,8 +533,6 @@ cat("For 2000m data:\n")
 check_lat_lon(train_filtered_2000m_data)
 ```
 Check for errors in Base code:
-Base -  the TLC (Taxi and Limousine Commission) base company code affiliated with the Uber pickup. This code identifies the licensed dispatching base that managed the Uber trip. Every ride must be affiliated with a TLC-licensed base, which is responsible for dispatching the trip.
-
 Function to list all unique bases:
 ```{r}
 list_unique_bases <- function(data) {
@@ -594,7 +592,9 @@ B02682 - SCHMECKEN LLC
 B02764 - DANACH-NY,LLC
 B02512 - UNTER LLC
 
+* It appears that all the base codes in the dataset are properly identified and correspond to valid base names, suggesting that there are no meaningless or invalid codes. Each base code is linked to a registered entity.
 
+* The base names seem to be associated with different companies, but the names themselves may not directly provide information about the service type or location.
 
 #### Dealing with outliers
 ```{r outliers}
@@ -605,7 +605,6 @@ B02512 - UNTER LLC
 ```{r}
 train_filtered_1000m_data
 ```
-
 
 ## Part B: Exploratory Data Analysis (EDA)
 ### 1. Data Preparation
@@ -620,15 +619,16 @@ We will also add:
 
 2. time_of_day: Group pickup times into time categories such as morning, afternoon, evening, and night to capture demand patterns.
 
+3. Dummy of the Bases: onvert the categorical base variable into dummy (one-hot encoded) variables.
+
 Add is_weekend Feature
 ```{r adding_is_weekend}
-# Function to add 'is_weekend' and 'day_of_week' features
+# Function to add 'is_weekend' feature only
 add_is_weekend <- function(data) {
   data %>%
     mutate(
-      # Extract day of the week and check if it's a weekend (Saturday or Sunday)
-      day_of_week = wday(timestamp, label = TRUE),
-      is_weekend = ifelse(day_of_week %in% c("Sat", "Sun"), 1, 0)
+      # Check if it's a weekend (Saturday or Sunday)
+      is_weekend = ifelse(wday(timestamp, label = TRUE) %in% c("Sat", "Sun"), 1, 0)
     )
 }
 ```
@@ -649,7 +649,6 @@ Add time_of_day Feature (in both categorical form & dummy form):
 
 Step 1: Adding time_of_day as a Categorical Feature
 * This feature assigns a number to each time period of the day (Night = 1, Morning = 2, Afternoon = 3, Evening = 4). This approach is suitable for tree-based models like decision trees, random forests, or gradient boosting machines (GBM), as these models handle categorical variables natively and can split data based on these categories without assuming any linear relationship.
-* Tree-based models can handle categorical variables without needing to transform them, making this representation ideal when using such models.
 
 ```{r}
 # Function to add 'time_of_day' as a categorical feature
@@ -681,8 +680,6 @@ head(train_filtered_2000m_data)
 
 Step 2: Adding time_of_day as Dummy Variables (One-Hot Encoding)
 * In this approach, we create separate columns for each time period (Night, Morning, Afternoon, Evening). This is suitable for linear models (e.g., linear regression, logistic regression), which expect numeric inputs and might incorrectly interpret a categorical variable like 1, 2, 3, 4 as implying some order or linear relationship. With dummy variables, each time period is independent, preventing any false assumptions about relationships between time periods.
-* Linear models assume a linear relationship between features and the target variable. If you leave time_of_day as 1, 2, 3, 4 (categorical), the model might falsely interpret that higher values imply higher importance, which isn’t true. Dummy variables prevent this by representing each category as its own independent feature (1 or 0), ensuring that the model does not assume any ordinal relationship.
-* Dummy variable trap: When using one-hot encoding, it's common to drop one category (here, is_night) because its value can be inferred when all other dummy variables are 0. This avoids redundancy and multicollinearity.
 
 Night: 00:00–05:59
 Morning: 06:00–11:59
@@ -718,10 +715,45 @@ head(train_filtered_1000m_data)
 train_filtered_2000m_data <- add_dummy_time_of_day(train_filtered_2000m_data)
 head(train_filtered_2000m_data)
 ```
+Add the dummy of the bases:
+Similar to the time_of_day feature, we need to convert the categorical base variable into dummy (one-hot encoded) variables when working with linear models. This prevents the model from assuming any ordinal relationship between the base codes. Since we have five base codes (B02598, B02617, B02682, B02764, B02512), we will create dummy variables for each, but we will remove one of the dummies to avoid the dummy variable trap (when all dummy features are 0, the removed category is 1). This is important in models like linear regression to prevent multicollinearity.
 
-By adding both a categorical feature and dummy variables for time_of_day, later on we will switch between the two versions depending on the model we will use:
-* Categorical feature (time_of_day_cat) for tree-based models.
-* Dummy variables (is_morning, is_afternoon, etc.) for linear models.
+```{r}
+# Function to add dummy variables for base codes and remove one dummy to avoid the dummy trap
+add_dummy_bases <- function(data) {
+  data %>%
+    mutate(
+      is_B02598 = ifelse(base == "B02598", 1, 0),
+      is_B02617 = ifelse(base == "B02617", 1, 0),
+      is_B02682 = ifelse(base == "B02682", 1, 0),
+      is_B02764 = ifelse(base == "B02764", 1, 0)
+      # B02512 will be the removed base (if all are 0, it's B02512)
+    )
+}
+```
+
+```{r}
+# Apply the function to the 1000m dataset
+train_filtered_1000m_data <- add_dummy_bases(train_filtered_1000m_data)
+head(train_filtered_1000m_data)
+```
+
+```{r}
+# Apply the function to the 2000m dataset
+train_filtered_2000m_data <- add_dummy_bases(train_filtered_2000m_data)
+head(train_filtered_2000m_data)
+```
+
+Explanation for Model Usage:
+* Tree-Based Models (like decision trees, random forests, etc.) can directly handle the categorical base codes and the time_of_day feature in its original categorical form. These models don’t require dummy variables and can split the data based on the base or time of day without assuming any linear relationship.
+
+* Linear Models (like linear regression, logistic regression, etc.) require dummy variables for categorical features like base and time_of_day to avoid false assumptions about relationships between different categories. Dummy variables prevent the model from interpreting categories like B02598 and B02617 as having a linear relationship, which would distort the model.
+
+* Dummy variable trap: When using one-hot encoding, it's common to drop one category (here, is_night & B02512) because its value can be inferred when all other dummy variables are 0. This avoids redundancy and multicollinearity.
+
+By adding both a categorical feature and dummy variables for time_of_day & base, later on we will switch between the two versions depending on the model we will use:
+* Categorical feature for tree-based models.
+* Dummy variables for linear models.
 
 #### Data from the Web: External Data Integration
 
@@ -758,20 +790,17 @@ if (nrow(non_zero_minute_or_second) > 0) {
 }
 ```
 
-We have confirmed that the weather data is recorded at exact hourly intervals, meaning there are no variations in the minutes or seconds. Therefore, when merging this data with our Uber pickup data, we'll need to align our timestamps accordingly. Specifically, we will round our pickup timestamps to the nearest hour to ensure consistency and enable a seamless and accurate merging process. This alignment helps maintain the integrity of our analysis by matching the time intervals precisely.
+We have confirmed that the weather data is recorded at exact hourly intervals, meaning the data is consistent without variations in the minutes or seconds. To merge this data with our Uber pickup data, we need to ensure our timestamps align correctly. Since the weather information is relevant for each hour as recorded, we will always round the Uber pickup timestamps down to the current hour to maintain accuracy and ensure a seamless merge.
 
-This code combines weather data (temperature, humidity, wind speed, and snow indication) with the Uber pickup data (1000m and 2000m datasets) using the timestamp as the key. If the minute value in the Uber pickup data (%M) is greater than 30, it uses the weather data from the next hour. Otherwise, it uses the weather data from the same hour.
+This code combines weather data (temperature, humidity, wind speed, and snow indication) with the Uber pickup data (1000m and 2000m datasets) using the timestamp as the key. Rather than adjusting the timestamps based on the minute, we round all timestamps to the start of the current hour since the weather data is available in one-hour increments. This approach ensures that the weather conditions are consistently matched to the correct hour.
 
-We are using a function called rounded_timestamp that adds a new feature, rounded_timestamp, to the Uber pickup datasets. This feature rounds the timestamp either up to the next hour or down to the start of the current hour based on the minute value (%M). This allows us to accurately align and merge the weather data with the Uber pickup data based on the adjusted timestamps.
+We are using a function called rounded_timestamp that adds a new feature, rounded_timestamp, to the Uber pickup datasets. This feature rounds the timestamp down to the start of the current hour to align the weather data with the Uber pickup data based on the adjusted timestamps.
 ```{r}
-# Function to adjust the timestamp based on the minute
+# Function to round the timestamp to the current hour
 rounded_timestamp <- function(df) {
   df %>%
     mutate(
-      rounded_timestamp = case_when(
-        minute(timestamp) > 30 ~ as.POSIXct(floor_date(timestamp, "hour") + hours(1), format="%Y-%m-%d %H:%M:%S", tz = "UTC"),
-        TRUE ~ as.POSIXct(floor_date(timestamp, "hour"), format="%Y-%m-%d %H:%M:%S", tz = "UTC")
-      )
+      rounded_timestamp = as.POSIXct(floor_date(timestamp, "hour"), format="%Y-%m-%d %H:%M:%S", tz = "UTC")
     )
 }
 ```

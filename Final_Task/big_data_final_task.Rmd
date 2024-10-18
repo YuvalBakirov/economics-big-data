@@ -67,7 +67,7 @@ Datasets train_raw_data.csv and train_raw_data_dists_more_then_2000.csv features
 
 3. lon: This column contains the longitude of the pickup location, representing the geographical position (east-west axis) of the ride.
 
-4. base: This column includes a code representing the Uber base or the specific area/company that managed the ride.
+4. base: This column includes a code representing the Uber base or the specific area/company that managed the ride (License Number).
 
 5. dist (only for train_raw_data_dists_more_then_2000.csv): This column represents the distance (in meters) between the pickup location and the Empire State Building. All values in this dataset are greater than 2000 meters, as the dataset is filtered to include only pickups beyond this radius.
 
@@ -185,6 +185,11 @@ max_distance <- max(train_filtered_1000m_data$dist)
 # Print the maximum distance
 print(max_distance)
 ```
+Let's check how many rows in this dataset we are left with:
+```{r}
+rows_1000m <- nrow(train_filtered_1000m_data)
+print(paste("Number of rows in the 1000m dataset:", rows_1000m))
+```
 ### Filtering by Time
 We need to make sure the timestamp column is formatted correctly.
 * The timestamp format (for example: 2014-04-01T00:02:00Z) includes a "T" between the date and time and ends with a "Z", which indicates that the time is in UTC (Coordinated Universal Time).
@@ -275,6 +280,7 @@ plot_hourly_pickup_distribution(train_filtered_2000m_data, hours,
                                 "Filtered Uber Pickups by Hour (2000m Data, Expected: 17:00 to 00:00)", 
                                 "lightgreen")
 ```
+We are left with only rows with the desired time range!
 
 ### Creating 15-Minute Intervals
 We're grouping the `timestamp` data into 15-minute intervals to make it easier to spot patterns and trends in Uber pickups. This lets us count how many pickups happen in each time block, helping us better understand demand and predict future activity.
@@ -286,7 +292,7 @@ create_pickup_counts <- function(data) {
   pickup_counts <- data %>%
     mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
     group_by(time_interval) %>%
-    summarise(count_pickups_per_interval = n())
+    summarise(number_of_pickups = n())
   
   return(pickup_counts)
 }
@@ -338,7 +344,7 @@ Visualization that shows top 10 pickup counts for both the 1000-meter and 2000-m
 plot_top_10_pickup_intervals <- function(data, title, color) {
   # Arrange the data to get the top 10 intervals with the highest pickup counts
   top_10_pickups <- data %>%
-    arrange(desc(count_pickups_per_interval)) %>%
+    arrange(desc(number_of_pickups)) %>%
     head(10)
   
   # Convert time_interval to a character with both date and time format
@@ -346,7 +352,7 @@ plot_top_10_pickup_intervals <- function(data, title, color) {
     mutate(time_interval = format(time_interval, "%Y-%m-%d %H:%M"))
   
   # Plot the top 10 intervals
-  ggplot(top_10_pickups, aes(x = time_interval, y = count_pickups_per_interval)) +
+  ggplot(top_10_pickups, aes(x = time_interval, y = number_of_pickups)) +
     geom_bar(stat = "identity", fill = color, width = 0.6) + # Adjust width for spacing
     labs(title = title,
          x = "Time Interval",
@@ -417,7 +423,7 @@ print(paste("Number of NA values in 1000m data:", na_count_1000m))
 na_count_2000m <- sum(is.na(train_filtered_2000m_data))
 print(paste("Number of NA values in 2000m data:", na_count_2000m))
 ```
-There is no NAs in both of the filltered data sets.
+There is no NAs in both of the filltered data set!
 
 #### Dealing with errors in the data
 Check that there are no errors in timestamps (like invalid days, months, hours, minutes, or seconds):
@@ -491,30 +497,26 @@ check_date_range(train_filtered_1000m_data, start_date, end_date)
 cat("For 2000m data:\n")
 check_date_range(train_filtered_2000m_data, start_date, end_date)
 ```
-
-Check for errors in  Latitude (lat), Longitude (lon) and Base (base):
+Check for errors in Latitude (lat) & Longitude (lon):
 
 1. Latitude values should range between -90 and 90 (since latitude represents how far north or south a location is from the equator).
 
 2.Longitude values should range between -180 and 180 (since longitude represents how far east or west a location is from the prime meridian).
 
-3. The base column typically represents the Uber base or dispatch center. This should contain valid base codes (likely alphanumeric strings)
-
 ```{r}
 # Function to check for errors in 'lat', 'lon', and 'base'
-check_lat_lon_base <- function(data) {
+check_lat_lon <- function(data) {
   # Filter for invalid latitude, longitude, or missing base
   invalid_data <- data %>%
     filter(lat < -90 | lat > 90 | 
-           lon < -180 | lon > 180 | 
-           is.na(base))
+           lon < -180 | lon > 180)
   
   # Check and print results
   if (nrow(invalid_data) > 0) {
-    cat("Invalid latitude, longitude, or missing base found:\n")
+    cat("Invalid latitude or longitude:\n")
     print(invalid_data)
   } else {
-    cat("All lat, lon, and base values are valid.\n")
+    cat("All lat & lon values are valid.\n")
   }
 }
 ```
@@ -522,18 +524,76 @@ check_lat_lon_base <- function(data) {
 ```{r}
 # Check for the 1000m data
 cat("For 1000m data:\n")
-check_lat_lon_base(train_filtered_1000m_data)
+check_lat_lon(train_filtered_1000m_data)
 ```
 
 ```{r}
 # Check for the 2000m data
 cat("For 2000m data:\n")
-check_lat_lon_base(train_filtered_2000m_data)
+check_lat_lon(train_filtered_2000m_data)
 ```
-Check base code:
+Check for errors in Base code:
+Base -  the TLC (Taxi and Limousine Commission) base company code affiliated with the Uber pickup. This code identifies the licensed dispatching base that managed the Uber trip. Every ride must be affiliated with a TLC-licensed base, which is responsible for dispatching the trip.
+
+Function to list all unique bases:
 ```{r}
-# todo 
+list_unique_bases <- function(data) {
+  unique_bases <- unique(data$base)
+  return(unique_bases)
+}
 ```
+
+```{r}
+# List unique bases in the 1000m dataset
+unique_bases_1000m <- list_unique_bases(train_filtered_1000m_data)
+print("Unique base codes in the 1000m dataset:")
+print(unique_bases_1000m)
+```
+
+```{r}
+# List unique bases in the 2000m dataset
+unique_bases_2000m <- list_unique_bases(train_filtered_2000m_data)
+print("Unique base codes in the 2000m dataset:")
+print(unique_bases_2000m)
+```
+```{r}
+# Function to compare unique bases between two datasets
+compare_unique_bases <- function(bases_1000m, bases_2000m) {
+  
+  # Check if both sets have the same items
+  same_bases <- setequal(bases_1000m, bases_2000m)
+  
+  if (same_bases) {
+    print("Both 1000m and 2000m datasets have the same unique bases.")
+  } else {
+    print("The 1000m and 2000m datasets have different unique bases.")
+    
+    # Identify the bases that are in 1000m but not in 2000m
+    diff_1000m <- setdiff(bases_1000m, bases_2000m)
+    if (length(diff_1000m) > 0) {
+      print("Bases present in 1000m but not in 2000m:")
+      print(diff_1000m)
+    }
+    
+    # Identify the bases that are in 2000m but not in 1000m
+    diff_2000m <- setdiff(bases_2000m, bases_1000m)
+    if (length(diff_2000m) > 0) {
+      print("Bases present in 2000m but not in 1000m:")
+      print(diff_2000m)
+    }
+  }
+}
+
+# Run the function to compare unique bases
+compare_unique_bases(unique_bases_1000m, unique_bases_2000m)
+```
+We used: https://www.nyc.gov/assets/tlc/downloads/pdf/trip_record_user_guide.pdf to find the Base Name:
+B02598 - HINTER LLC 
+B02617 - WEITER LLC
+B02682 - SCHMECKEN LLC
+B02764 - DANACH-NY,LLC
+B02512 - UNTER LLC
+
 
 
 #### Dealing with outliers
@@ -551,7 +611,7 @@ train_filtered_1000m_data
 ### 1. Data Preparation
 #### Date base data: Adding Columns
 We added in the Data Rearrangement part:
-1. count_pickups_per_interval: this is how many pickups were is this specific 15-min interval.
+1. number_of_pickups: this is how many pickups were is this specific 15-min interval (the label).
 
 2. dist (for the 1000m data): this is the distance from each pickup to the Empire State Building
 
@@ -585,7 +645,44 @@ train_filtered_2000m_data <- add_is_weekend(train_filtered_2000m_data)
 head(train_filtered_2000m_data)
 ```
 
-Add time_of_day Feature:
+Add time_of_day Feature (in both categorical form & dummy form):
+
+Step 1: Adding time_of_day as a Categorical Feature
+* This feature assigns a number to each time period of the day (Night = 1, Morning = 2, Afternoon = 3, Evening = 4). This approach is suitable for tree-based models like decision trees, random forests, or gradient boosting machines (GBM), as these models handle categorical variables natively and can split data based on these categories without assuming any linear relationship.
+* Tree-based models can handle categorical variables without needing to transform them, making this representation ideal when using such models.
+
+```{r}
+# Function to add 'time_of_day' as a categorical feature
+add_categorical_time_of_day <- function(data) {
+  data %>%
+    mutate(
+      hour = hour(timestamp),
+      time_of_day = case_when(
+        hour >= 0 & hour < 6  ~ 1,  # Night
+        hour >= 6 & hour < 12 ~ 2,  # Morning
+        hour >= 12 & hour < 18 ~ 3,  # Afternoon
+        hour >= 18 & hour <= 23 ~ 4   # Evening
+      )
+    )
+}
+```
+
+```{r}
+# Apply the function to the 1000m dataset
+train_filtered_1000m_data <- add_categorical_time_of_day(train_filtered_1000m_data)
+head(train_filtered_1000m_data)
+```
+
+```{r}
+# Apply the function to the 2000m dataset
+train_filtered_2000m_data <- add_categorical_time_of_day(train_filtered_2000m_data)
+head(train_filtered_2000m_data)
+```
+
+Step 2: Adding time_of_day as Dummy Variables (One-Hot Encoding)
+* In this approach, we create separate columns for each time period (Night, Morning, Afternoon, Evening). This is suitable for linear models (e.g., linear regression, logistic regression), which expect numeric inputs and might incorrectly interpret a categorical variable like 1, 2, 3, 4 as implying some order or linear relationship. With dummy variables, each time period is independent, preventing any false assumptions about relationships between time periods.
+* Linear models assume a linear relationship between features and the target variable. If you leave time_of_day as 1, 2, 3, 4 (categorical), the model might falsely interpret that higher values imply higher importance, which isn’t true. Dummy variables prevent this by representing each category as its own independent feature (1 or 0), ensuring that the model does not assume any ordinal relationship.
+* Dummy variable trap: When using one-hot encoding, it's common to drop one category (here, is_night) because its value can be inferred when all other dummy variables are 0. This avoids redundancy and multicollinearity.
 
 Night: 00:00–05:59
 Morning: 06:00–11:59
@@ -595,8 +692,8 @@ Evening: 18:00–23:59
 Here’s the code for adding the time_of_day feature using one-hot encoding, broken down into separate dummy features (Night, Morning, Afternoon, Evening):
 
 ```{r adding_time_of_day}
-# Function to add 'time_of_day' dummy features
-add_time_of_day <- function(data) {
+# Function to add 'time_of_day' as one-hot encoded dummy variables
+add_dummy_time_of_day <- function(data) {
   data %>%
     mutate(
       hour = hour(timestamp),
@@ -605,21 +702,26 @@ add_time_of_day <- function(data) {
       is_morning = ifelse(hour >= 6 & hour < 12, 1, 0),
       is_afternoon = ifelse(hour >= 12 & hour < 18, 1, 0),
       is_evening = ifelse(hour >= 18 & hour <= 23, 1, 0)
-    )
+    ) %>%
+    select(-is_night)  # Remove one category:'is_night' to avoid dummy variable trap
 }
 ```
 
 ```{r}
 # Apply the function to the 1000m dataset
-train_filtered_1000m_data <- add_time_of_day(train_filtered_1000m_data)
+train_filtered_1000m_data <- add_dummy_time_of_day(train_filtered_1000m_data)
 head(train_filtered_1000m_data)
 ```
 
 ```{r}
 # Apply the function to the 2000m dataset
-train_filtered_2000m_data <- add_time_of_day(train_filtered_2000m_data)
+train_filtered_2000m_data <- add_dummy_time_of_day(train_filtered_2000m_data)
 head(train_filtered_2000m_data)
 ```
+
+By adding both a categorical feature and dummy variables for time_of_day, later on we will switch between the two versions depending on the model we will use:
+* Categorical feature (time_of_day_cat) for tree-based models.
+* Dummy variables (is_morning, is_afternoon, etc.) for linear models.
 
 #### Data from the Web: External Data Integration
 

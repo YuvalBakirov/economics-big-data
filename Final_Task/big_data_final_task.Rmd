@@ -13,9 +13,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Load necessary libraries
 ```{r necessary_libraries}
+library(tidyr)
 library(dplyr)
 library(geosphere) 
-library(leaflet)
+# library(leaflet)
 library(ggplot2)
 library(lubridate)
 library(readr)
@@ -27,6 +28,7 @@ library(stringr)
 train_raw_data <- read.csv("train_raw_data.csv")
 train_filtered_2000m_data <- read.csv("train_raw_data_dists_more_then_2000.csv")
 test_data <- read.csv("test_set.csv")
+
 ```
 
 ### train_raw_data.csv
@@ -87,19 +89,19 @@ Note: In order to predict the number_of_pickups using a ML model, our test data 
 
 Looking at the map:
 ```{r interactive_map}
-# Define latitude, longitude, and radius
-lat <- 40.7484 # Empire State Building coordinates
-lon <- -73.985 # Empire State Building coordinates
-
-small_radius <- 1000  # Radius in meters
-big_radius <- 2000  # Radius in meters
-
-# Create the leaflet map
-leaflet() %>%
-  addTiles() %>%  # Add default OpenStreetMap tiles
-  addMarkers(lng = lon, lat = lat, popup = "Empire State Building") %>%  # 
-  addCircles(lng = lon, lat = lat, radius = small_radius, color = "blue", fillOpacity = 0.2) %>% # 
-  addCircles(lng = lon, lat = lat, radius = big_radius, color = "red", fillOpacity = 0.1)  #
+# # Define latitude, longitude, and radius
+# lat <- 40.7484 # Empire State Building coordinates
+# lon <- -73.985 # Empire State Building coordinates
+# 
+# small_radius <- 1000  # Radius in meters
+# big_radius <- 2000  # Radius in meters
+# 
+# # Create the leaflet map
+# leaflet() %>%
+#   addTiles() %>%  # Add default OpenStreetMap tiles
+#   addMarkers(lng = lon, lat = lat, popup = "Empire State Building") %>%  # 
+#   addCircles(lng = lon, lat = lat, radius = small_radius, color = "blue", fillOpacity = 0.2) %>% # 
+#   addCircles(lng = lon, lat = lat, radius = big_radius, color = "red", fillOpacity = 0.1)  #
 ```
 
 #### Is 2000m is in train_raw?
@@ -202,6 +204,16 @@ Let's check how many rows in this dataset we are left with:
 ```{r}
 rows_1000m <- nrow(train_filtered_1000m_data)
 print(paste("Number of rows in the 1000m dataset:", rows_1000m))
+
+rows_2000m <- nrow(train_filtered_2000m_data)
+print(paste("Number of rows in the 2000m dataset:", rows_2000m))
+```
+
+
+
+```{r}
+train_filtered_1000m_data
+train_filtered_2000m_data
 ```
 ### Filtering by Time
 We need to make sure the timestamp column is formatted correctly.
@@ -829,7 +841,7 @@ train_filtered_1000m_data
 
 ```{r}
 # Round timestamps for 2000m data
-train_filtered_2000m_data <- rounded_timestamp(train_filtered_1000m_data)
+train_filtered_2000m_data <- rounded_timestamp(train_filtered_2000m_data)
 train_filtered_2000m_data
 ```
 ```{r}
@@ -875,14 +887,378 @@ print(nas_2000m)
 ```
 No NAs!
 
+```{r}
+# Assuming your table (data frame) is named 'my_table'
+ write.csv(train_filtered_1000m_data, "train_filtered_1000m_data.csv")
+ write.csv(train_filtered_2000m_data, "train_filtered_2000m_data.csv")
+
+```
 ### 2. Exploratory Analysis
+
+1. Actions Taken on the Data (Data Cleaning and Transformation):
+Start by documenting what actions have been performed on the data:
+
+Filtered Data: Data was filtered based on distance from the Empire State Building:
+1. train_raw_data which is now called train_filtered_1000m_data table which has only data about pickups which was occurred up to 1000m radius from the Empire State Building.
+2. train_filtered_2000m_data which has data about pickups which was occurred up to 1000m radius from the Empire State Building.
+
+New Variables: The dataset includes additional columns like dist, time_interval, number_of_pickups,	is_weekend,	hour,	time_of_day,	is_morning,	is_afternoon,	is_evening,	is_B02598,	is_B02617,	is_B02682	is_B02764.
+Rounded Timestamps: The timestamps were rounded to 15-minute intervals (rounded_timestamp).
+
+
 #### Descriptive Statistics and Visualization
 ```{r descriptive_statistics}
 # קוד לסטטיסטיקות תיאוריות ויצירת גרפים
+# Calculate summary statistics for the 1000m dataset
+summary_stats_1000m <- train_filtered_1000m_data %>%
+  select(dist, number_of_pickups, hour, is_weekend, is_morning, is_afternoon, is_evening) %>%
+  summary()
+
+# Print summary statistics for the 1000m dataset
+cat("Summary statistics for 1000m dataset:\n")
+print(summary_stats_1000m)
+
+# Calculate summary statistics for the 2000m dataset
+summary_stats_2000m <- train_filtered_2000m_data %>%
+  select(dist, number_of_pickups, hour, is_weekend, is_morning, is_afternoon, is_evening) %>%
+  summary()
+
+# Print summary statistics for the 2000m dataset
+cat("\nSummary statistics for 2000m dataset:\n")
+print(summary_stats_2000m)
+
 ```
 
-## Part C: Forecast for the Future
+```{r}
+colnames(train_filtered_1000m_data)
+cat("\n")
+colnames(train_filtered_2000m_data)
 
+```
+
+```{r}
+# 1. Scatter Plot: Number of pickups vs. Distance (dist)
+ggplot(train_filtered_1000m_data, aes(x = dist, y = number_of_pickups)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  labs(title = "Number of Pickups vs Distance (1000m radius)", 
+       x = "Distance from Empire State Building (m)", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+# 2. Boxplot: Number of pickups by Hour of the day
+ggplot(train_filtered_1000m_data, aes(x = factor(hour), y = number_of_pickups)) +
+  geom_boxplot(fill = "orange") +
+  labs(title = "Number of Pickups by Hour (1000m radius)", 
+       x = "Hour of the Day", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+
+# Boxplot: Number of Pickups by Weekend/Weekday
+ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pickups)) +
+  geom_boxplot(fill = "purple") +
+  labs(title = "Number of Pickups on Weekdays vs Weekends", 
+       x = "Is Weekend (1 = Yes, 0 = No)", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+
+# Scatter Plot: Number of Pickups by Hour for Specific Bases (e.g., B02598)
+ggplot(train_filtered_1000m_data, aes(x = hour, y = number_of_pickups, color = factor(is_B02598))) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Number of Pickups by Hour for Base B02598", 
+       x = "Hour of the Day", 
+       y = "Number of Pickups", color = "Is Base B02598") +
+  theme_minimal()
+
+
+# Repeat for the 2000m dataset (similar plots can be created for comparison)
+# 1. Scatter Plot: Number of pickups vs. Distance (dist) for 2000m
+ggplot(train_filtered_2000m_data, aes(x = dist, y = number_of_pickups)) +
+  geom_point(color = "red", alpha = 0.6) +
+  labs(title = "Number of Pickups vs Distance (2000m radius)", 
+       x = "Distance from Empire State Building (m)", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+# Boxplot: Number of Pickups by Time of Day
+ggplot(train_filtered_1000m_data, aes(x = factor(time_of_day), y = number_of_pickups)) +
+  geom_boxplot(fill = "purple") +
+  labs(title = "Number of Pickups by Time of Day", 
+       x = "Time of Day (Night = 1, Morning = 2, Afternoon = 3, Evening = 4)", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+
+
+```
+
+```{r}
+# Improved scatter plot: Number of pickups vs. Distance with transparency and smaller points
+ggplot(train_filtered_1000m_data, aes(x = dist, y = number_of_pickups)) +
+  geom_point(color = "blue", alpha = 0.3, size = 1) +  # Adding transparency and reducing size
+  labs(title = "Number of Pickups vs Distance (1000m radius)", 
+       x = "Distance from Empire State Building (m)", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+# Alternative: 2D density plot for better clarity
+ggplot(train_filtered_1000m_data, aes(x = dist, y = number_of_pickups)) +
+  geom_bin2d(bins = 30) +  # Use 2D binning to visualize the density of points
+  scale_fill_continuous(type = "viridis") +  # Add color scale for density
+  labs(title = "2D Density Plot: Number of Pickups vs Distance (1000m radius)", 
+       x = "Distance from Empire State Building (m)", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+
+# Bar Plot: Average Number of Pickups by Weekday vs Weekend
+ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pickups)) +
+  stat_summary(fun = "mean", geom = "bar", fill = "lightblue") +
+  labs(title = "Average Number of Pickups: Weekday vs Weekend", 
+       x = "Is Weekend (0 = Weekday, 1 = Weekend)", 
+       y = "Average Number of Pickups") +
+  theme_minimal()
+
+# Line plot of pickups over time
+ggplot(train_filtered_1000m_data, aes(x = time_interval, y = number_of_pickups)) +
+  geom_line(color = "blue") +
+  labs(title = "Pickups Over Time",
+       x = "Time Interval",
+       y = "Number of Pickups") +
+  theme_minimal()
+
+# Histogram of pickups by time of day
+ggplot(train_filtered_1000m_data, aes(x = hour)) +
+  geom_histogram(binwidth = 1, fill = "lightblue", color = "black") +
+  labs(title = "Distribution of Pickups by Hour of Day",
+       x = "Hour of the Day",
+       y = "Frequency of Pickups") +
+  theme_minimal()
+
+# Bar plot: average number of pickups by time of day
+ggplot(train_filtered_1000m_data, aes(x = as.factor(hour), y = number_of_pickups)) +
+  stat_summary(fun = "mean", geom = "bar", fill = "lightgreen") +
+  labs(title = "Average Number of Pickups by Time of Day",
+       x = "Hour of the Day",
+       y = "Average Number of Pickups") +
+  theme_minimal()
+
+# Box plot of pickups over time
+ggplot(train_filtered_1000m_data, aes(x = as.factor(hour), y = number_of_pickups)) +
+  geom_boxplot(fill = "purple", alpha = 0.5) +
+  labs(title = "Distribution of Pickups by Hour of the Day",
+       x = "Hour of the Day",
+       y = "Number of Pickups") +
+  theme_minimal()
+
+
+```
+
+```{r}
+# Heatmap: Number of pickups by hour and base
+train_filtered_1000m_data %>%
+  gather(base, value, is_B02598:is_B02764) %>%  # Gather the base columns into a single column
+  filter(value == 1) %>%  # Only include rows where the base is active
+  ggplot(aes(x = factor(hour), y = base)) +
+  geom_tile(aes(fill = number_of_pickups), color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Heatmap of Pickups by Hour and Base", 
+       x = "Hour of the Day", 
+       y = "Base", 
+       fill = "Number of Pickups") +
+  theme_minimal()
+```
+
+```{r}
+# Check if there are any pickups for B02512
+sum(train_filtered_1000m_data$is_B02512 == 1)
+
+colnames(train_filtered_1000m_data)
+
+```
+```{r}
+# Facet Plot: Number of Pickups by Hour, Faceted by Base (with different name for the pivoted column)
+train_filtered_1000m_data %>%
+  pivot_longer(cols = c(is_B02598, is_B02617, is_B02682, is_B02764),  # Use only the available base columns
+               names_to = "base_active", values_to = "value") %>%
+  filter(value == 1) %>%  # Only include rows where the base is active
+  ggplot(aes(x = hour, y = number_of_pickups)) +
+  geom_point(alpha = 0.5, color = "darkgreen") +
+  facet_wrap(~base_active) +  # Create a facet for each active base
+  labs(title = "Distribution of Pickups by Hour, Faceted by Active Base", 
+       x = "Hour of the Day", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+```
+
+```{r}
+# Map numeric 'time_of_day' values to their respective labels
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  mutate(time_of_day_label = case_when(
+    time_of_day == 1 ~ "Night",
+    time_of_day == 2 ~ "Morning",
+    time_of_day == 3 ~ "Afternoon",
+    time_of_day == 4 ~ "Evening",
+    TRUE ~ "Unknown"
+  ))
+
+# Bar Plot: Pickups by Time of Day and Base
+train_filtered_1000m_data %>%
+  pivot_longer(cols = c(is_B02598, is_B02617, is_B02682, is_B02764), 
+               names_to = "base_active", values_to = "value") %>%
+  filter(value == 1) %>%
+  ggplot(aes(x = time_of_day_label, y = number_of_pickups, fill = base)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Pickups by Time of Day and Base", 
+       x = "Time of Day", 
+       y = "Number of Pickups", 
+       fill = "Base") +
+  theme_minimal()
+
+```
+
+```{r}
+# Line plot showing average pickups by hour for each base
+train_filtered_1000m_data %>%
+  pivot_longer(cols = c(is_B02598, is_B02617, is_B02682, is_B02764), 
+               names_to = "base_active", values_to = "value") %>%
+  filter(value == 1) %>%
+  group_by(base, hour) %>%
+  summarise(avg_pickups = mean(number_of_pickups)) %>%
+  ggplot(aes(x = hour, y = avg_pickups, color = base)) +
+  geom_line(size = 1) +
+  labs(title = "Average Number of Pickups by Hour and Base", 
+       x = "Hour of the Day", 
+       y = "Average Number of Pickups", 
+       color = "Base") +
+  theme_minimal()
+
+```
+
+```{r}
+# Boxplot: Number of Pickups on Weekdays vs Weekends
+ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pickups, fill = factor(is_weekend))) +
+  geom_boxplot() +
+  labs(title = "Number of Pickups: Weekdays vs Weekends", 
+       x = "Is Weekend (0 = Weekday, 1 = Weekend)", 
+       y = "Number of Pickups", 
+       fill = "Weekend Indicator") +
+  theme_minimal()
+
+```
+
+```{r}
+# Check the range of the 'rounded_timestamp' column
+range(train_filtered_1000m_data$rounded_timestamp)
+
+```
+
+```{r}
+# Time Series: Pickups over time
+ggplot(train_filtered_1000m_data, aes(x = rounded_timestamp, y = number_of_pickups, group = 1)) +
+  geom_line(color = "blue", size = 1) +
+  labs(title = "Time Series of Pickups Throughout the Day", 
+       x = "Time (15-minute intervals)", 
+       y = "Number of Pickups") +
+  theme_minimal()
+
+```
+
+```{r}
+# Group data by day and hour to find average pickups at different times of the day
+daily_patterns <- train_filtered_1000m_data %>%
+  mutate(date = as.Date(rounded_timestamp)) %>%
+  group_by(date, hour) %>%
+  summarise(avg_pickups = mean(number_of_pickups)) %>%
+  ungroup()
+
+# Visualize average pickups per hour over days
+ggplot(daily_patterns, aes(x = hour, y = avg_pickups, group = date, color = date)) +
+  geom_line() +
+  labs(title = "Average Daily Pickup Pattern by Hour", 
+       x = "Hour of the Day", 
+       y = "Average Number of Pickups") +
+  theme_minimal()
+```
+```{r}
+# Add a column to indicate whether the day is a weekend
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  mutate(weekend = ifelse(weekdays(as.Date(rounded_timestamp)) %in% c("Saturday", "Sunday"), "Weekend", "Weekday"))
+
+# Group by hour and weekend/weekday to analyze patterns
+weekend_patterns <- train_filtered_1000m_data %>%
+  group_by(weekend, hour) %>%
+  summarise(avg_pickups = mean(number_of_pickups)) %>%
+  ungroup()
+
+# Visualize patterns for weekdays and weekends
+ggplot(weekend_patterns, aes(x = hour, y = avg_pickups, color = weekend)) +
+  geom_line(size = 1) +
+  labs(title = "Pickup Patterns: Weekdays vs Weekends", 
+       x = "Hour of the Day", 
+       y = "Average Number of Pickups") +
+  theme_minimal()
+
+```
+```{r}
+# Install necessary package for rolling window calculations
+install.packages("zoo")
+library(zoo)
+
+# Compute a 7-day rolling mean and standard deviation (assuming 96 15-minute intervals per day)
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  arrange(rounded_timestamp) %>%
+  mutate(rolling_mean = rollmean(number_of_pickups, k = 96*7, fill = NA),  # 7-day window
+         rolling_sd = rollapply(number_of_pickups, width = 96*7, FUN = sd, fill = NA))
+
+# Plot the rolling mean and rolling standard deviation without saving
+ggplot(train_filtered_1000m_data, aes(x = rounded_timestamp)) +
+  geom_line(aes(y = rolling_mean), color = "blue", size = 1) +
+  geom_line(aes(y = rolling_sd), color = "red", linetype = "dashed", size = 0.8) +
+  labs(title = "Rolling Mean and Standard Deviation of Pickups", 
+       x = "Date", 
+       y = "Pickups (7-day Rolling Mean and SD)") +
+  theme_minimal()
+```
+Breakdown of What You're Seeing:
+7-Day Rolling Mean (Blue Line):
+
+This smooths out daily fluctuations by averaging the data over a 7-day window. It helps identify long-term trends in the data, while ignoring short-term noise.
+The peaks in the blue line indicate periods where the average number of pickups was higher, while the troughs show periods of lower average pickups.
+The pattern you’re seeing here appears to be cyclical, with higher pickup activity on certain days of the week (likely weekdays, driven by commuting patterns).
+7-Day Rolling Standard Deviation (Red Line):
+
+The dashed red line represents the rolling standard deviation over the same 7-day window. Standard deviation is a measure of volatility or variability—the higher the value, the more spread out the number of pickups are during that window.
+When the red line spikes, it means that the number of pickups was more volatile, meaning the numbers fluctuated more during that period.
+When the red line is lower, it indicates a more stable period, where the number of pickups was relatively consistent.
+
+Observations:
+Cyclic Nature: There’s a repeating pattern of rising and falling rolling means. This suggests a weekly pattern in Uber demand, where demand is likely to be higher on certain days of the week, and lower on others (e.g., weekends).
+Higher Variability Around Peaks: You can observe that the red line (rolling standard deviation) tends to increase during periods where the blue line (rolling mean) spikes. This indicates that variability is higher when demand increases. In other words, during peak periods, there’s greater unpredictability or fluctuation in the number of pickups.
+Stable Low Periods: The rolling standard deviation drops during periods of low demand (when the blue line dips). This suggests that low-demand periods are generally more consistent and less variable.
+
+
+```{r}
+# Plot lag relationship between pickup counts at different time lags
+par(mfrow = c(2, 3))  # Set up the plotting area for 6 plots (2 rows, 3 columns)
+for (i in 1:6) {
+  lag.plot(train_filtered_1000m_data$number_of_pickups, lags = i, main = paste("Lag Plot with Lag", i))
+}
+
+```
+Strong Positive Correlation:
+
+The points in the lag plot are closely aligned along a diagonal line, indicating a strong positive correlation between the number of pickups at time t and the number of pickups at time t-1 (one lag prior).
+This means that the number of pickups at one time step is highly influenced by the number of pickups in the previous time step. If there were many pickups at time t-1, there will likely be a similar number of pickups at time t.
+
+Insights:
+Predictability: Since there is a strong positive correlation between current and previous pickups, this suggests that the number of pickups is highly predictable based on recent data. A time series model like ARIMA or Exponential Smoothing should perform well in forecasting future pickup trends.
+Lagged Effects: The correlation across time steps indicates that demand cycles are quite smooth and continuous, with pickup numbers transitioning gradually from one time step to the next rather than fluctuating wildly.
+
+
+## Part C: Forecast for the Future
 ###Finak Data for Modeling
 Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final training dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
 

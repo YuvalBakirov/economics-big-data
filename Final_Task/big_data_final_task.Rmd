@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyr)
 library(dplyr)
 library(geosphere) 
-# library(leaflet)
+library(leaflet)
 library(ggplot2)
 library(lubridate)
 library(readr)
@@ -209,12 +209,15 @@ rows_2000m <- nrow(train_filtered_2000m_data)
 print(paste("Number of rows in the 2000m dataset:", rows_2000m))
 ```
 
-
-
 ```{r}
 train_filtered_1000m_data
+```
+
+```{r}
 train_filtered_2000m_data
 ```
+
+
 ### Filtering by Time
 We need to make sure the timestamp column is formatted correctly.
 * The timestamp format (for example: 2014-04-01T00:02:00Z) includes a "T" between the date and time and ends with a "Z", which indicates that the time is in UTC (Coordinated Universal Time).
@@ -581,6 +584,7 @@ unique_bases_2000m <- list_unique_bases(train_filtered_2000m_data)
 print("Unique base codes in the 2000m dataset:")
 print(unique_bases_2000m)
 ```
+
 ```{r}
 # Function to compare unique bases between two datasets
 compare_unique_bases <- function(bases_1000m, bases_2000m) {
@@ -629,10 +633,6 @@ B02512 - UNTER LLC
 
 ```
 
-```{r}
-train_filtered_1000m_data
-```
-
 ## Part B: Exploratory Data Analysis (EDA)
 ### 1. Data Preparation
 #### Date base data: Adding Columns
@@ -648,7 +648,7 @@ We will also add:
 
 3. Dummy of the Bases: onvert the categorical base variable into dummy (one-hot encoded) variables.
 
-Add is_weekend Feature
+Add The is_weekend Feature:
 ```{r adding_is_weekend}
 # Function to add 'is_weekend' feature only
 add_is_weekend <- function(data) {
@@ -672,7 +672,7 @@ train_filtered_2000m_data <- add_is_weekend(train_filtered_2000m_data)
 head(train_filtered_2000m_data)
 ```
 
-Add time_of_day Feature (in both categorical form & dummy form):
+Add The time_of_day Feature (in both categorical form & dummy form):
 
 Step 1: Adding time_of_day as a Categorical Feature
 * This feature assigns a number to each time period of the day (Night = 1, Morning = 2, Afternoon = 3, Evening = 4). This approach is suitable for tree-based models like decision trees, random forests, or gradient boosting machines (GBM), as these models handle categorical variables natively and can split data based on these categories without assuming any linear relationship.
@@ -707,13 +707,14 @@ head(train_filtered_2000m_data)
 
 Step 2: Adding time_of_day as Dummy Variables (One-Hot Encoding)
 * In this approach, we create separate columns for each time period (Night, Morning, Afternoon, Evening). This is suitable for linear models (e.g., linear regression, logistic regression), which expect numeric inputs and might incorrectly interpret a categorical variable like 1, 2, 3, 4 as implying some order or linear relationship. With dummy variables, each time period is independent, preventing any false assumptions about relationships between time periods.
+* Note: Later on, we will remove one of the dummy variables to avoid multicollinearity, which can lead to issues when running linear models. However, for now, we will keep all the dummy variables as part of our exploratory data analysis (EDA) to fully explore the data.
 
 Night: 00:00–05:59
 Morning: 06:00–11:59
 Afternoon: 12:00–17:59
 Evening: 18:00–23:59
 
-Here’s the code for adding the time_of_day feature using one-hot encoding, broken down into separate dummy features (Night, Morning, Afternoon, Evening):
+Here's the code for adding the time_of_day feature using one-hot encoding, broken down into separate dummy features (Night, Morning, Afternoon, Evening):
 
 ```{r adding_time_of_day}
 # Function to add 'time_of_day' as one-hot encoded dummy variables
@@ -726,8 +727,8 @@ add_dummy_time_of_day <- function(data) {
       is_morning = ifelse(hour >= 6 & hour < 12, 1, 0),
       is_afternoon = ifelse(hour >= 12 & hour < 18, 1, 0),
       is_evening = ifelse(hour >= 18 & hour <= 23, 1, 0)
-    ) %>%
-    select(-is_night)  # Remove one category:'is_night' to avoid dummy variable trap
+    ) # %>%
+    # select(-is_night)  # Remove one category:'is_night' to avoid dummy variable trap
 }
 ```
 
@@ -743,7 +744,8 @@ train_filtered_2000m_data <- add_dummy_time_of_day(train_filtered_2000m_data)
 head(train_filtered_2000m_data)
 ```
 Add the dummy of the bases:
-Similar to the time_of_day feature, we need to convert the categorical base variable into dummy (one-hot encoded) variables when working with linear models. This prevents the model from assuming any ordinal relationship between the base codes. Since we have five base codes (B02598, B02617, B02682, B02764, B02512), we will create dummy variables for each, but we will remove one of the dummies to avoid the dummy variable trap (when all dummy features are 0, the removed category is 1). This is important in models like linear regression to prevent multicollinearity.
+* Similar to the time_of_day feature, we need to convert the categorical base variable into dummy (one-hot encoded) variables when working with linear models. This prevents the model from assuming any ordinal relationship between the base codes. Since we have five base codes (B02598, B02617, B02682, B02764, B02512), we will create dummy variables for each.
+* Note: Later on, we will remove one of the dummies to avoid the dummy variable trap (when all dummy features are 0, the removed category is 1). This is important in models like linear regression to prevent multicollinearity. For now, we will keep all dummies in place for the purposes of exploratory data analysis (EDA).
 
 ```{r}
 # Function to add dummy variables for base codes and remove one dummy to avoid the dummy trap
@@ -753,8 +755,11 @@ add_dummy_bases <- function(data) {
       is_B02598 = ifelse(base == "B02598", 1, 0),
       is_B02617 = ifelse(base == "B02617", 1, 0),
       is_B02682 = ifelse(base == "B02682", 1, 0),
-      is_B02764 = ifelse(base == "B02764", 1, 0)
-      # B02512 will be the removed base (if all are 0, it's B02512)
+      is_B02764 = ifelse(base == "B02764", 1, 0),
+      is_B02512 = ifelse(base == "B02512", 1, 0)
+      # Later on B02512 will be the removed base (if all are 0, it's B02512)
+      # %>%
+      # select(-is_B02512)
     )
 }
 ```
@@ -772,7 +777,7 @@ head(train_filtered_2000m_data)
 ```
 
 Explanation for Model Usage:
-* Tree-Based Models (like decision trees, random forests, etc.) can directly handle the categorical base codes and the time_of_day feature in its original categorical form. These models don’t require dummy variables and can split the data based on the base or time of day without assuming any linear relationship.
+* Tree-Based Models (like decision trees, random forests, etc.) can directly handle the categorical base codes and the time_of_day feature in its original categorical form. These models don't require dummy variables and can split the data based on the base or time of day without assuming any linear relationship.
 
 * Linear Models (like linear regression, logistic regression, etc.) require dummy variables for categorical features like base and time_of_day to avoid false assumptions about relationships between different categories. Dummy variables prevent the model from interpreting categories like B02598 and B02617 as having a linear relationship, which would distort the model.
 
@@ -844,6 +849,7 @@ train_filtered_1000m_data
 train_filtered_2000m_data <- rounded_timestamp(train_filtered_2000m_data)
 train_filtered_2000m_data
 ```
+
 ```{r}
 head(weather_data)
 ```
@@ -891,7 +897,6 @@ No NAs!
 # Assuming your table (data frame) is named 'my_table'
  write.csv(train_filtered_1000m_data, "train_filtered_1000m_data.csv")
  write.csv(train_filtered_2000m_data, "train_filtered_2000m_data.csv")
-
 ```
 ### 2. Exploratory Analysis
 
@@ -908,7 +913,6 @@ Rounded Timestamps: The timestamps were rounded to 15-minute intervals (rounded_
 
 #### Descriptive Statistics and Visualization
 ```{r descriptive_statistics}
-# קוד לסטטיסטיקות תיאוריות ויצירת גרפים
 # Calculate summary statistics for the 1000m dataset
 summary_stats_1000m <- train_filtered_1000m_data %>%
   select(dist, number_of_pickups, hour, is_weekend, is_morning, is_afternoon, is_evening) %>%
@@ -1077,6 +1081,7 @@ sum(train_filtered_1000m_data$is_B02512 == 1)
 colnames(train_filtered_1000m_data)
 
 ```
+
 ```{r}
 # Facet Plot: Number of Pickups by Hour, Faceted by Base (with different name for the pivoted column)
 train_filtered_1000m_data %>%
@@ -1182,6 +1187,7 @@ ggplot(daily_patterns, aes(x = hour, y = avg_pickups, group = date, color = date
        y = "Average Number of Pickups") +
   theme_minimal()
 ```
+
 ```{r}
 # Add a column to indicate whether the day is a weekend
 train_filtered_1000m_data <- train_filtered_1000m_data %>%
@@ -1202,6 +1208,7 @@ ggplot(weekend_patterns, aes(x = hour, y = avg_pickups, color = weekend)) +
   theme_minimal()
 
 ```
+
 ```{r}
 # Install necessary package for rolling window calculations
 install.packages("zoo")
@@ -1227,16 +1234,16 @@ Breakdown of What You're Seeing:
 
 This smooths out daily fluctuations by averaging the data over a 7-day window. It helps identify long-term trends in the data, while ignoring short-term noise.
 The peaks in the blue line indicate periods where the average number of pickups was higher, while the troughs show periods of lower average pickups.
-The pattern you’re seeing here appears to be cyclical, with higher pickup activity on certain days of the week (likely weekdays, driven by commuting patterns).
+The pattern you are seeing here appears to be cyclical, with higher pickup activity on certain days of the week (likely weekdays, driven by commuting patterns).
 7-Day Rolling Standard Deviation (Red Line):
 
-The dashed red line represents the rolling standard deviation over the same 7-day window. Standard deviation is a measure of volatility or variability—the higher the value, the more spread out the number of pickups are during that window.
+The dashed red line represents the rolling standard deviation over the same 7-day window. Standard deviation is a measure of volatility or variability - the higher the value, the more spread out the number of pickups are during that window.
 When the red line spikes, it means that the number of pickups was more volatile, meaning the numbers fluctuated more during that period.
 When the red line is lower, it indicates a more stable period, where the number of pickups was relatively consistent.
 
 Observations:
-Cyclic Nature: There’s a repeating pattern of rising and falling rolling means. This suggests a weekly pattern in Uber demand, where demand is likely to be higher on certain days of the week, and lower on others (e.g., weekends).
-Higher Variability Around Peaks: You can observe that the red line (rolling standard deviation) tends to increase during periods where the blue line (rolling mean) spikes. This indicates that variability is higher when demand increases. In other words, during peak periods, there’s greater unpredictability or fluctuation in the number of pickups.
+Cyclic Nature: There is a repeating pattern of rising and falling rolling means. This suggests a weekly pattern in Uber demand, where demand is likely to be higher on certain days of the week, and lower on others (e.g., weekends).
+Higher Variability Around Peaks: You can observe that the red line (rolling standard deviation) tends to increase during periods where the blue line (rolling mean) spikes. This indicates that variability is higher when demand increases. In other words, during peak periods, there is greater unpredictability or fluctuation in the number of pickups.
 Stable Low Periods: The rolling standard deviation drops during periods of low demand (when the blue line dips). This suggests that low-demand periods are generally more consistent and less variable.
 
 
@@ -1259,15 +1266,38 @@ Lagged Effects: The correlation across time steps indicates that demand cycles a
 
 
 ## Part C: Forecast for the Future
-###Finak Data for Modeling
-Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final training dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
 
 ### Model 1 - Full Data
+Final Data for Modeling:
+Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final training dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
+
+```{r fix_train_data_for_model}
+
+```
+
+```{r fix_test_data_for_model}
+
+```
+
 ```{r model_1_full_data}
 # קוד לאימון המודל הראשון באמצעות הנתונים המלאים
 ```
 
 ### Model 2 - Filtered Data
+1. The Problem:
+The training data includes Uber pickups within a 2000-meter radius, while the test data represents pickups within a 1000-meter radius around the Empire State Building. This difference in radius creates a problem because the model might learn patterns from a wider area (2000m) that do not apply to the narrower, more localized 1000m area required for the predictions in the test data.
+
+2. Clustering Solution:
+Since the test data doesn't include specific locations (latitude, longitude), and the cluster based on location from the test data is not present in the training data, we need a non-location-based clustering approach.
+
+```{r fix_train_data_for_model}
+
+```
+
+```{r fix_test_data_for_model}
+
+```
+
 ```{r model_2_filtered_data}
 # קוד לאימון המודל השני באמצעות הנתונים המסוננים (מחוץ לרדיוס 2000 מטר)
 ```

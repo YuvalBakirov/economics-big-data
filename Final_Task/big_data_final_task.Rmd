@@ -674,8 +674,10 @@ head(train_filtered_2000m_data)
 
 Add The time_of_day Feature (in both categorical form & dummy form):
 
+Note: In this case, since our data contains times only between 17:00 and 00:00, we will adapt the time_of_day feature to reflect only the relevant periods: Afternoon (12:00–17:59) and Evening (18:00–23:59). There will be no Night or Morning periods as the data doesn't cover these hours.
+
 Step 1: Adding time_of_day as a Categorical Feature
-* This feature assigns a number to each time period of the day (Night = 1, Morning = 2, Afternoon = 3, Evening = 4). This approach is suitable for tree-based models like decision trees, random forests, or gradient boosting machines (GBM), as these models handle categorical variables natively and can split data based on these categories without assuming any linear relationship.
+This feature assigns a number to each relevant time period of the day. In our case, this includes Afternoon = 1 and Evening = 2. This approach is suitable for tree-based models like decision trees, random forests, or gradient boosting machines (GBM), as these models handle categorical variables natively and can split data based on these categories without assuming any linear relationship.
 
 ```{r}
 # Function to add 'time_of_day' as a categorical feature
@@ -684,10 +686,8 @@ add_categorical_time_of_day <- function(data) {
     mutate(
       hour = hour(timestamp),
       time_of_day = case_when(
-        hour >= 0 & hour < 6  ~ 1,  # Night
-        hour >= 6 & hour < 12 ~ 2,  # Morning
-        hour >= 12 & hour < 18 ~ 3,  # Afternoon
-        hour >= 18 & hour <= 23 ~ 4   # Evening
+        hour >= 12 & hour < 18 ~ 1,  # Afternoon
+        hour >= 18 & hour <= 23 ~ 2   # Evening
       )
     )
 }
@@ -706,11 +706,11 @@ head(train_filtered_2000m_data)
 ```
 
 Step 2: Adding time_of_day as Dummy Variables (One-Hot Encoding)
-* In this approach, we create separate columns for each time period (Night, Morning, Afternoon, Evening). This is suitable for linear models (e.g., linear regression, logistic regression), which expect numeric inputs and might incorrectly interpret a categorical variable like 1, 2, 3, 4 as implying some order or linear relationship. With dummy variables, each time period is independent, preventing any false assumptions about relationships between time periods.
-* Note: Later on, we will remove one of the dummy variables to avoid multicollinearity, which can lead to issues when running linear models. However, for now, we will keep all the dummy variables as part of our exploratory data analysis (EDA) to fully explore the data.
+* In this approach, we create separate columns for each time period (Afternoon and Evening). Since linear models (e.g., linear regression, logistic regression) expect numeric inputs, this prevents the model from assuming any ordinal relationship between these categories. With dummy variables, each time period is treated independently.
 
-Night: 00:00–05:59
-Morning: 06:00–11:59
+* Note: Later on, we will remove one of the dummy variables to avoid multicollinearity, which can lead to issues when running linear models. However, for now, we will keep both dummy variables as part of our exploratory data analysis (EDA) to fully explore the data.
+
+* Relevant Time Periods:
 Afternoon: 12:00–17:59
 Evening: 18:00–23:59
 
@@ -723,12 +723,11 @@ add_dummy_time_of_day <- function(data) {
     mutate(
       hour = hour(timestamp),
       # Create dummy variables for time of day
-      is_night = ifelse(hour >= 0 & hour < 6, 1, 0),
-      is_morning = ifelse(hour >= 6 & hour < 12, 1, 0),
       is_afternoon = ifelse(hour >= 12 & hour < 18, 1, 0),
       is_evening = ifelse(hour >= 18 & hour <= 23, 1, 0)
     ) # %>%
-    # select(-is_night)  # Remove one category:'is_night' to avoid dummy variable trap
+    # For now, we keep both dummy variables for EDA. Later, we can remove one to avoid multicollinearity.
+    # select(-is_afternoon)  # avoids the dummy variable trap
 }
 ```
 
@@ -854,27 +853,36 @@ train_filtered_2000m_data
 head(weather_data)
 ```
 
+Select the Required Columns from the Weather Data
 ```{r}
 # Select only the required columns from the weather data
 weather_data_selected <- weather_data %>%
   select(timestamp, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour)
+```
 
+Merge Weather Data with train_filtered_1000m_data and train_filtered_2000m_data Based on rounded_timestamp: We will merge based on rounded_timestamp in the Uber pickup data and timestamp in the weather data.
+```{r}
 # Merge the weather data with the 1000m dataset using 'rounded_timestamp'
-new_features_1000m_data <- train_filtered_1000m_data %>%
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
   left_join(weather_data_selected, by = c("rounded_timestamp" = "timestamp"))
 
-# Check the first few rows of the new dataset to verify the merge
-head(new_features_1000m_data)
+# Check the first few rows of the updated 1000m dataset
+head(train_filtered_1000m_data)
 ```
 
 ```{r}
 # Merge the weather data with the 2000m dataset using 'rounded_timestamp'
-new_features_2000m_data <- train_filtered_2000m_data %>%
+train_filtered_2000m_data <- train_filtered_2000m_data %>%
   left_join(weather_data_selected, by = c("rounded_timestamp" = "timestamp"))
 
-# Check the first few rows of the new dataset to verify the merge
-head(new_features_2000m_data)
+# Check the first few rows of the updated 2000m dataset
+head(train_filtered_2000m_data)
 ```
+* Left Join: The left_join ensures that all rows from train_filtered_1000m_data and train_filtered_2000m_data are preserved. If a matching timestamp in the weather data is not found, the new weather columns (temp, humidity, etc.) will contain NA.
+
+* No New Rows Added: Since we are using left_join, only the weather data columns are added to the rows in train_filtered_1000m_data and train_filtered_2000m_data. No additional rows from the weather data will be inserted.
+
+* All Rows Kept: Even if a row in the Uber data doesn't have a corresponding weather timestamp, it will still be retained in the final dataset, with NA values for the weather features.
 
 Lets check NAs after adding new features:
 ```{r}

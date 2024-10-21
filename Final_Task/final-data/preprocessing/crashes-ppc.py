@@ -84,6 +84,8 @@ collisions['crash_time_15min'] = collisions['crash_datetime'].dt.floor('15T')
 
 collisions = collisions[["crash_datetime", "crash_time_15min", "latitude", "longitude", "number_of_persons_injured", "number_of_persons_killed"]]
 
+collisions['was_crash'] = True
+
 # Apply the vectorized function to the DataFrame columns
 collisions['distance_to_empire'] = haversine_vectorized(collisions['latitude'], collisions['longitude'])
 
@@ -105,16 +107,18 @@ time_range = pd.date_range(start='2014-04-01 00:00:00', end='2014-09-30 23:59:59
 # Create a DataFrame for the 15-minute intervals
 time_df = pd.DataFrame(time_range, columns=['crash_time_15min'])
 
-# Group by the 15-minute intervals and sum the total number of injured and killed
+# Group by the 15-minute intervals, sum the total number of injured and killed, and count the number of rows
 crashes_sums_1000 = df_filtered_1000.groupby('crash_time_15min').agg({
     'number_of_persons_injured': 'sum',
-    'number_of_persons_killed': 'sum'
-}).reset_index()
+    'number_of_persons_killed': 'sum',
+    'crash_time_15min': 'size'  # Counting rows
+}).rename(columns={'crash_time_15min': 'number_of_crashes'}).reset_index()
 
 crashes_sums_2000A = df_filtered_2000A.groupby('crash_time_15min').agg({
     'number_of_persons_injured': 'sum',
-    'number_of_persons_killed': 'sum'
-}).reset_index()
+    'number_of_persons_killed': 'sum',
+    'crash_time_15min': 'size'  # Counting rows
+}).rename(columns={'crash_time_15min': 'number_of_crashes'}).reset_index()
 
 # Merge with the full time range to ensure all 15-minute intervals are represented
 final_df_1000 = pd.merge(time_df, crashes_sums_1000, on='crash_time_15min', how='left').fillna(0)

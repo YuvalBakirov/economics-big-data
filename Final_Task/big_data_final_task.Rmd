@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyr)
 library(dplyr)
 library(geosphere) 
-# library(leaflet)
+library(leaflet)
 library(ggplot2)
 library(lubridate)
 library(readr)
@@ -198,7 +198,7 @@ Making sure the filter is done
 max_distance <- max(train_filtered_1000m_data$dist)
 
 # Print the maximum distance
-print(max_distance)
+print(paste("Maximum distance in the 1000m dataset is:", max_distance))
 ```
 Let's check how many rows in this dataset we are left with:
 ```{r}
@@ -269,19 +269,17 @@ train_filtered_2000m_data <- train_filtered_2000m_data %>%
 
 Check the Results:
 ```{r}
-# Create a data frame with all hours from 0 to 23
-hours <- data.frame(hour = 0:23)
-```
-
-```{r}
-plot_hourly_pickup_distribution <- function(data, hours_df, title, color) {
+plot_hourly_pickup_distribution <- function(data, title, color) {
+  # Create a data frame with all hours from 0 to 23
+  hours <- data.frame(hour = 0:23)
+  
   # Extract the hour and count the number of pickups per hour
   hourly_data <- data %>%
     mutate(hour = hour(timestamp)) %>%
     count(hour)
   
   # Merge the hourly counts with the 'hours' data frame to include missing hours as 0
-  hourly_data_complete <- merge(hours_df, hourly_data, by = "hour", all.x = TRUE)
+  hourly_data_complete <- merge(hours, hourly_data, by = "hour", all.x = TRUE)
   hourly_data_complete[is.na(hourly_data_complete)] <- 0  # Replace NAs with 0
   
   # Plot the hourly data
@@ -297,13 +295,13 @@ plot_hourly_pickup_distribution <- function(data, hours_df, title, color) {
 
 ```{r}
 # Plot for 1000-meter filtered data (lightblue color)
-plot_hourly_pickup_distribution(train_filtered_1000m_data, hours, 
+plot_hourly_pickup_distribution(train_filtered_1000m_data, 
                                 "Filtered Uber Pickups by Hour (1000m Data, Expected: 17:00 to 00:00)", 
                                 "lightblue")
 ```
 ```{r}
 # Plot for 2000-meter filtered data (lightgreen color)
-plot_hourly_pickup_distribution(train_filtered_2000m_data, hours, 
+plot_hourly_pickup_distribution(train_filtered_2000m_data, 
                                 "Filtered Uber Pickups by Hour (2000m Data, Expected: 17:00 to 00:00)", 
                                 "lightgreen")
 ```
@@ -368,7 +366,6 @@ train_filtered_2000m_data
 ```
 
 Visualization that shows top 10 pickup counts for both the 1000-meter and 2000-meter filtered data:
-
 ```{r}
 plot_top_10_pickup_intervals <- function(data, title, color) {
   # Arrange the data to get the top 10 intervals with the highest pickup counts
@@ -417,9 +414,9 @@ plot_top_10_pickup_intervals(pickup_counts_2000m, "Top 10 Pickup Intervals (2000
 * This shows that the Uber demand beyond a 2000-meter radius from the Empire State Building was much higher on that specific date, indicating a spike in activity.
 
 ### Data Cleaning
-#### Dealing with NAs 
-Check for NA in the datasets:
 
+#### Dealing with NAs
+Check for NA in the datasets:
 ```{r}
 # Function to count NAs for each column in the dataset
 count_nas_per_column <- function(data) {
@@ -526,6 +523,15 @@ check_date_range(train_filtered_1000m_data, start_date, end_date)
 cat("For 2000m data:\n")
 check_date_range(train_filtered_2000m_data, start_date, end_date)
 ```
+```{r}
+# Check the range of the time_interval in the 1000m data
+range(train_filtered_1000m_data$timestamp)
+```
+```{r}
+# Check the range of the time_interval in the 2000m data
+range(train_filtered_2000m_data$timestamp)
+```
+
 Check for errors in Latitude (lat) & Longitude (lon):
 
 1. Latitude values should range between -90 and 90 (since latitude represents how far north or south a location is from the equator).
@@ -653,7 +659,6 @@ plot_base_counts <- function(data, title, fill_color) {
 ```{r}
 # Apply the function to the 1000m dataset
 plot_base_counts(train_filtered_1000m_data, "Number of Rows per Base (1000m Data)", "lightblue")
-
 ```
 
 ```{r}
@@ -752,6 +757,7 @@ train_filtered_2000m_data
 
 ### Remove Unnecessary Features
 In this step, we are removing unnecessary features from both the 1000m and 2000m datasets to streamline the data for modeling. Specifically, we are removing the timestamp, lat, lon, base, and dist columns, which are not needed for our predictive models. Our goal is to retain only the time_interval and number_of_pickups columns. Additionally, we ensure that each time interval appears only once (without repeats), as duplicates can distort predictions.
+
 ```{r}
 # Function to remove unnecessary features and keep unique time intervals
 clean_data <- function(data) {
@@ -810,23 +816,31 @@ train_filtered_1000m_data
 train_filtered_2000m_data <- add_is_weekend(train_filtered_2000m_data)
 train_filtered_2000m_data
 ```
+```{r}
+# Apply the function to the test dataset
+test_fixed_data <- add_is_weekend(test_fixed_data)
+test_fixed_data
+```
 
-Add The time_of_day Feature (in both categorical form & dummy form):
+Add The time_of_day Feature:
 
-Note: In this case, since our data contains times only between 17:00 and 00:00, we will adapt the time_of_day feature to reflect only the relevant periods: Evening (17:00–20:30) and Night (20:31–00:00). There will be no Afternoon or Morning periods as the data doesn't cover these hours.
+Note: In this case, since our data contains times only between 17:00 and 00:00, we will adapt the time_of_day feature to reflect only the relevant periods: Evening (17:00-20:30) and Night (20:31-00:00). There will be no Afternoon or Morning periods as the data doesn't cover these hours.
 
-Step 1: Adding time_of_day as a Categorical Feature
-This feature assigns a number to each relevant time period of the day. In our case, this includes Evening = 1 and Night = 2. This approach is suitable for tree-based models as these models handle categorical variables natively and can split data based on these categories without assuming any linear relationship.
+Function to add 'is_night' as a binary feature (0 for Evening, 1 for Night). This feature assigns a binary value based on the time of day. 
+In our case, Evening (17:00 - 20:30) is represented by 0, and Night (20:31 - 00:00) is represented by 1. 
 
 ```{r}
-# Function to add 'time_of_day' as a categorical feature
-add_categorical_time_of_day <- function(data) {
+# Function to add 'is_night' as a binary feature (0 for Evening, 1 for Night)
+add_is_night  <- function(data) {
   data %>%
     mutate(
-      time_of_day = case_when(
-        hour(time_interval) == 17 ~ 1,                              
-        hour(time_interval) > 17 & hour(time_interval) < 20 ~ 1,        
-        hour(time_interval) == 20 & minute(time_interval) <= 30 ~ 1,    
+      is_night = case_when(
+        # Evening: 17:00 - 20:30
+        hour(time_interval) == 17 ~ 0,                              
+        hour(time_interval) > 17 & hour(time_interval) < 20 ~ 0,        
+        hour(time_interval) == 20 & minute(time_interval) <= 30 ~ 0, 
+        
+        # Night: 20:31 - 00:00
         (hour(time_interval) == 20 & minute(time_interval) > 30) |      
         (hour(time_interval) > 20 & hour(time_interval) <= 23) ~ 2,
         hour(time_interval) == 0 ~ 2
@@ -837,104 +851,21 @@ add_categorical_time_of_day <- function(data) {
 
 ```{r}
 # Apply the function to the 1000m dataset
-train_filtered_1000m_data <- add_categorical_time_of_day(train_filtered_1000m_data)
+train_filtered_1000m_data <- add_is_night(train_filtered_1000m_data)
 train_filtered_1000m_data
 ```
 
 ```{r}
 # Apply the function to the 2000m dataset
-train_filtered_2000m_data <- add_categorical_time_of_day(train_filtered_2000m_data)
+train_filtered_2000m_data <- add_is_night(train_filtered_2000m_data)
 train_filtered_2000m_data
 ```
 
-Step 2: Adding time_of_day as Dummy Variables (One-Hot Encoding)
-* In this approach, we create separate columns for each time period (Afternoon and Evening). Since linear models (e.g., linear regression, logistic regression) expect numeric inputs, this prevents the model from assuming any ordinal relationship between these categories. With dummy variables, each time period is treated independently.
-
-* Note: Later on, we will remove one of the dummy variables to avoid multicollinearity, which can lead to issues when running linear models. However, for now, we will keep both dummy variables as part of our exploratory data analysis (EDA) to fully explore the data.
-
-* Relevant Time Periods:
-Evening: 17:00–20:30
-Night: 20:31–00:00
-
-Here's the code for adding the time_of_day feature using one-hot encoding, broken down into separate dummy features (Night & Evening):
-
-```{r adding_time_of_day}
-# Function to add 'time_of_day' as one-hot encoded dummy variables 
-add_dummy_time_of_day <- function(data) {
-  data %>%
-    mutate(
-      # Create dummy variables for time of day
-      is_evening = ifelse(
-        (hour(time_interval) == 17) | 
-        (hour(time_interval) > 17 & hour(time_interval) < 20) | 
-        (hour(time_interval) == 20 & minute(time_interval) <= 30), 1, 0
-      ),
-      is_night = ifelse(
-        (hour(time_interval) == 20 & minute(time_interval) > 30) | 
-        (hour(time_interval) > 20 & hour(time_interval) <= 23), 1, 0 |
-        (hour(time_interval) == 0)
-      )
-    ) # %>%
-    # select(-is_evening)  # Optionally remove one category to avoid the dummy variable trap
-}
-
-```
-
 ```{r}
-# Apply the function to the 1000m dataset
-train_filtered_1000m_data <- add_dummy_time_of_day(train_filtered_1000m_data)
-train_filtered_1000m_data
+# Apply the function to the test dataset
+test_fixed_data <- add_is_night(test_fixed_data)
+test_fixed_data
 ```
-
-```{r}
-# Apply the function to the 2000m dataset
-train_filtered_2000m_data <- add_dummy_time_of_day(train_filtered_2000m_data)
-train_filtered_2000m_data
-```
-TO DEL:
-Add the dummy of the bases:
-* Similar to the time_of_day feature, we need to convert the categorical base variable into dummy (one-hot encoded) variables when working with linear models. This prevents the model from assuming any ordinal relationship between the base codes. Since we have five base codes (B02598, B02617, B02682, B02764, B02512), we will create dummy variables for each.
-* Note: Later on, we will remove one of the dummies to avoid the dummy variable trap (when all dummy features are 0, the removed category is 1). This is important in models like linear regression to prevent multicollinearity. For now, we will keep all dummies in place for the purposes of exploratory data analysis (EDA).
-
-```{r}
-# Function to add dummy variables for base codes and remove one dummy to avoid the dummy trap
-# add_dummy_bases <- function(data) {
-#  data %>%
-#    mutate(
-#      is_B02598 = ifelse(base == "B02598", 1, 0),
-#      is_B02617 = ifelse(base == "B02617", 1, 0),
-#      is_B02682 = ifelse(base == "B02682", 1, 0),
-#      is_B02764 = ifelse(base == "B02764", 1, 0),
-#      is_B02512 = ifelse(base == "B02512", 1, 0)
-      # Later on B02512 will be the removed base (if all are 0, it's B02512)
-      # %>%
-      # select(-is_B02512)
-#    )
-#}
-```
-
-```{r}
-# Apply the function to the 1000m dataset
-# train_filtered_1000m_data <- add_dummy_bases(train_filtered_1000m_data)
-# head(train_filtered_1000m_data)
-```
-
-```{r}
-# Apply the function to the 2000m dataset
-# train_filtered_2000m_data <- add_dummy_bases(train_filtered_2000m_data)
-# head(train_filtered_2000m_data)
-```
-
-Explanation for Model Usage:
-* Tree-Based Models (like decision trees, random forests, etc.) can directly handle the categorical base codes and the time_of_day feature in its original categorical form. These models don't require dummy variables and can split the data based on the base or time of day without assuming any linear relationship.
-
-* Linear Models (like linear regression, logistic regression, etc.) require dummy variables for categorical features like base and time_of_day to avoid false assumptions about relationships between different categories. Dummy variables prevent the model from interpreting categories like B02598 and B02617 as having a linear relationship, which would distort the model.
-
-* Dummy variable trap: When using one-hot encoding, it's common to drop one category (here, is_night & B02512) because its value can be inferred when all other dummy variables are 0. This avoids redundancy and multicollinearity.
-
-By adding both a categorical feature and dummy variables for time_of_day & base, later on we will switch between the two versions depending on the model we will use:
-* Categorical feature for tree-based models.
-* Dummy variables for linear models.
 
 #### Data from the Web: External Data Integration
 
@@ -988,6 +919,24 @@ weather_data <- weather_data %>%
 head(weather_data)
 ```
 
+```{r}
+range(weather_data$hourly_time_interval)
+```
+
+```{r}
+range(train_filtered_1000m_data$time_interval)
+```
+
+```{r}
+range(train_filtered_2000m_data$time_interval)
+```
+
+```{r}
+range(test_fixed_data$time_interval)
+```
+
+The weather_data dataset spans from 2014-01-01 00:00:00 to 2014-12-31 23:00:00, covering the entire time range present in both the training and test data.
+
 We combine weather data (temperature, humidity, wind speed, and snow indication) with the Uber pickup data (1000m and 2000m datasets) using the hourly_time_interval as the key. We round all Uber pickup timestamps (i.e., the time_interval) down to the current hour to match the weather data, which is recorded at one-hour intervals. This approach ensures that the weather conditions are consistently matched with the Uber pickup data at the appropriate hourly time.
 
 We are using a function called rounded_timestamp that adds a new feature to the Uber pickup datasets. This feature rounds the time_interval down to the start of the current hour to align it with the hourly_time_interval in the weather data.
@@ -1014,6 +963,12 @@ train_filtered_2000m_data
 ```
 
 ```{r}
+# Round time_interval for test data
+test_fixed_data <- rounded_timestamp(test_fixed_data)
+test_fixed_data
+```
+
+```{r}
 head(weather_data)
 ```
 
@@ -1024,7 +979,7 @@ weather_data_selected <- weather_data %>%
   select(hourly_time_interval, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour)
 ```
 
-Merging Weather Data with 1000m and 2000m Data Based on rounded_timestamp and hourly_time_interval:
+Merging Weather Data with 1000m & 2000m & test Data Based on rounded_timestamp and hourly_time_interval:
 ```{r}
 # Merge the weather data with the 1000m dataset using 'rounded_timestamp' and 'hourly_time_interval'
 train_filtered_1000m_data <- train_filtered_1000m_data %>%
@@ -1041,6 +996,15 @@ train_filtered_2000m_data <- train_filtered_2000m_data %>%
 
 # Check the first few rows of the updated 2000m dataset
 head(train_filtered_2000m_data)
+```
+
+```{r}
+# Merge the weather data with the test dataset using 'rounded_timestamp' and 'hourly_time_interval'
+test_fixed_data <- test_fixed_data %>%
+  left_join(weather_data_selected, by = c("rounded_timestamp" = "hourly_time_interval"))
+
+# Check the first few rows of the updated 2000m dataset
+head(test_fixed_data)
 ```
 
 Notes:
@@ -1066,6 +1030,14 @@ print(nas_2000m)
 ```
 No NAs!
 
+```{r}
+# For test data
+nas_test <- count_nas_per_column(test_fixed_data)
+print("NA counts for test data:")
+print(nas_test)
+```
+NAs for only number_of_pickups - this is what we need to predict          
+
 #### Dealing with outliers
 ```{r outliers}
 # not sure if needed here or at all
@@ -1084,11 +1056,10 @@ Start by documenting what actions have been performed on the data:
 
 Filtered Data: Data was filtered based on distance from the Empire State Building:
 1. train_raw_data which is now called train_filtered_1000m_data table which has only data about pickups which was occurred up to 1000m radius from the Empire State Building.
-2. train_filtered_2000m_data which has data about pickups which was occurred up to 1000m radius from the Empire State Building.
+2. The train_filtered_2000m_data includes pickups from over 2000 meters away from the Empire State Building. 
 
-New Variables: The dataset includes additional columns like dist, time_interval, number_of_pickups,	is_weekend,	hour,	time_of_day,	is_morning,	is_afternoon,	is_evening,	is_B02598,	is_B02617,	is_B02682	is_B02764.
-Rounded Timestamps: The timestamps were rounded to 15-minute intervals (rounded_timestamp).
-
+New Variables: The dataset includes additional columns like time_interval, number_of_pickups,	is_weekend, is_night, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour, 
+and also an helper feature rounded_timestamps: The timestamps were rounded to 15-minute intervals.
 
 #### Descriptive Statistics and Visualization
 ```{r descriptive_statistics}

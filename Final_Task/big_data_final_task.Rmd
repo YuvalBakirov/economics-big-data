@@ -1184,12 +1184,35 @@ yellow_taxis_2000Am
 
 Checking time range:
 ```{r}
-range(yellow_taxis_1000m$crash_time_15min)
+range(yellow_taxis_1000m$pickup_time_15min)
 ```
 
 ```{r}
-range(yellow_taxis_2000Am$crash_time_15min)
+range(yellow_taxis_2000Am$pickup_time_15min)
 ```
+For our convenience, we will rename the pickup_count column to taxis_pickup_count:
+```{r}
+# Function to rename 'pickup_count' to 'taxis_pickup_count'
+rename_pickup_count <- function(data) {
+  data %>%
+    rename(taxis_pickup_count = pickup_count)
+}
+```
+
+```{r}
+# Apply the function to the datasets
+yellow_taxis_1000m <- rename_pickup_count(yellow_taxis_1000m)
+yellow_taxis_2000Am <- rename_pickup_count(yellow_taxis_2000Am)
+```
+
+```{r}
+yellow_taxis_1000m
+```
+
+```{r}
+yellow_taxis_2000Am
+```
+
 
 Here we will merge the yellow taxis data pickup count with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join where pickup_time_15min = time_interval:
 ```{r}

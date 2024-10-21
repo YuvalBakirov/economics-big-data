@@ -21,6 +21,7 @@ library(ggplot2)
 library(lubridate)
 library(readr)
 library(stringr)
+library(corrplot)
 ```
 
 ## Load the CSV files
@@ -790,9 +791,7 @@ We added in the Data Rearrangement part:
 We will also add:
 1.is_weekend: Extract whether the pickup occurred on a weekday or weekend. This is important because pickup patterns often differ on weekdays versus weekends.
 
-2. time_of_day: Group pickup times into time categories such as morning, afternoon, evening, and night to capture demand patterns.
-
-3. Dummy of the Bases: Convert the categorical base variable into dummy (one-hot encoded) variables.
+2. is_night: binary feature to identify if the time interval is in the evening or night to capture.
 
 Add The is_weekend Feature:
 ```{r adding_is_weekend}
@@ -1168,7 +1167,6 @@ yellow_taxis_1000m
 yellow_taxis_2000Am
 ```
 
-
 fix crash_time_15min format:
 ```{r}
 # Usage for 1000m crash data
@@ -1213,7 +1211,6 @@ yellow_taxis_1000m
 yellow_taxis_2000Am
 ```
 
-
 Here we will merge the yellow taxis data pickup count with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join where pickup_time_15min = time_interval:
 ```{r}
 # Function to merge yellow taxis data with train or test data
@@ -1240,6 +1237,154 @@ train_filtered_2000m_data
 test_fixed_data <- merge_taxis_data(test_fixed_data, yellow_taxis_1000m)
 test_fixed_data
 ```
+
+##### Arrests
+TODO - add explanations!
+```{r load_data}
+arrests_1000m <- read.csv("arrests_F_and_M_1000m.csv")
+arrests_2000Am <- read.csv("arrests_F_and_M_2000Am.csv")
+```
+
+```{r}
+arrests_1000m
+```
+
+```{r}
+arrests_2000Am
+```
+
+ransform Daily Arrest Data to 15-Minute Intervals:
+```{r}
+# Function to replicate daily arrests data across all 15-minute intervals in each day
+replicate_arrests_to_intervals <- function(arrests_data) {
+  # Convert the arrest_date to POSIXct format for consistency
+  arrests_data <- arrests_data %>%
+    mutate(arrest_date = as.Date(arrest_date, format = "%Y-%m-%d"))
+  
+  # Create a sequence of 15-minute intervals for each day
+  arrests_data_15min <- arrests_data %>%
+    rowwise() %>%
+    mutate(time_intervals = list(seq.POSIXt(
+      from = as.POSIXct(arrest_date),
+      to = as.POSIXct(arrest_date) + 86399, # 23:59:59 on the same day
+      by = "15 min"
+    ))) %>%
+    unnest(cols = c(time_intervals)) %>%
+    mutate(
+      time_interval = as.POSIXct(time_intervals, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+    ) %>%
+    select(time_interval, felony_count, misdemeanor_count, total_arrests)
+  
+  return(arrests_data_15min)
+}
+```
+
+```{r}
+# Apply the function to the datasets
+arrests_1000m <- replicate_arrests_to_intervals(arrests_1000m)
+arrests_2000Am <- replicate_arrests_to_intervals(arrests_2000Am)
+```
+
+```{r}
+arrests_1000m
+```
+
+```{r}
+arrests_2000Am
+```
+
+Checking time range:
+```{r}
+range(arrests_1000m$time_interval)
+```
+
+```{r}
+range(arrests_2000Am$time_interval)
+```
+Here we will merge the arrests data pickup with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join by time_interval:
+```{r}
+# Function to merge yellow taxis data with train or test data
+merge_arrests_data <- function(data, arrests_data) {
+  data %>%
+    left_join(arrests_data, by = "time_interval")
+}
+```
+
+
+```{r}
+# Merge arrests data with the 1000m Uber dataset
+train_filtered_1000m_data <- merge_arrests_data(train_filtered_1000m_data, arrests_1000m)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge arrests data with the 2000m Uber dataset
+train_filtered_2000m_data <- merge_arrests_data(train_filtered_2000m_data, arrests_2000Am)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge arrests data with the test Uber dataset
+test_fixed_data <- merge_arrests_data(test_fixed_data, arrests_1000m)
+test_fixed_data
+```
+
+##### Holidays
+TODO - add explanations!
+```{r load_data}
+holidays <- read.csv("US_2014_federal_holidays.csv")
+holidays
+```
+
+We need to filter the holidays that occur between April 1, 2014, and September 30, 2014:
+```{r}
+# Convert the 'Date' column to Date format
+holidays <- holidays %>%
+  mutate(Date = as.Date(Date, format = "%Y-%m-%d"))
+
+# Filter holidays between 1st April 2014 and 30th September 2014
+holidays <- holidays %>%
+  filter(Date >= as.Date("2014-04-01") & Date <= as.Date("2014-09-30"))
+
+# View the filtered holidays
+holidays
+```
+
+The only holidays in the range of our data are: Memorial Day, Independence Day, Labor Day.
+Here's the function that adds new holiday features (Memorial Day, Independence Day, and Labor Day) to each of your datasets based on whether the time_interval falls on a specific holiday:
+```{r}
+# Function to add holiday features to a dataset
+add_holiday_features <- function(data) {
+  data %>%
+    mutate(
+      # Check if each time_interval matches the specific holiday and create a binary column for each
+      memorial_day = ifelse(format(as.Date(time_interval, tz = "UTC"), "%Y-%m-%d") == "2014-05-26", 1, 0),
+      independence_day = ifelse(format(as.Date(time_interval, tz = "UTC"), "%Y-%m-%d") == "2014-07-04", 1, 0),
+      labor_day = ifelse(format(as.Date(time_interval, tz = "UTC"), "%Y-%m-%d") == "2014-09-01", 1, 0)
+    )
+}
+```
+
+```{r}
+# Apply the function to each dataset
+train_filtered_1000m_data <- add_holiday_features(train_filtered_1000m_data)
+train_filtered_2000m_data <- add_holiday_features(train_filtered_2000m_data)
+test_fixed_data <- add_holiday_features(test_fixed_data)
+```
+
+```{r}
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data
+```
+
+```{r}
+test_fixed_data
+```
+
+If all the features-Memorial_Day, Independence_Day, and Labor_Day-are set to 0, it indicates that the date is a regular day (not a holiday).
 
 Lets check NAs after adding new features:
 ```{r}
@@ -1272,7 +1417,6 @@ NAs for only number_of_pickups - this is what we need to predict
 ```
 
 ### 2. Exploratory Analysis
-
 TODO - ADD MORE INFO:
 1. Actions Taken on the Data (Data Cleaning and Transformation):
 Start by documenting what actions have been performed on the data:
@@ -1281,66 +1425,494 @@ Filtered Data: Data was filtered based on distance from the Empire State Buildin
 1. train_raw_data which is now called train_filtered_1000m_data table which has only data about pickups which was occurred up to 1000m radius from the Empire State Building.
 2. The train_filtered_2000m_data includes pickups from over 2000 meters away from the Empire State Building. 
 
-New Variables: The dataset includes additional columns like time_interval, number_of_pickups,	is_weekend, is_night, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour, 
+New Variables: The dataset includes additional columns like time_interval, number_of_pickups,	is_weekend, is_night, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour, number_of_persons_injured, number_of_persons_killed, number_of_crashes, event_count, taxis_pickup_count, felony_count, misdemeanor_count, total_arrests, memorial_day, independence_day, labor_day  
 and also an helper feature rounded_timestamps: The timestamps were rounded to 15-minute intervals.
 
+---------------
+We added a lot of features, we probably won't need all of them, we'll start with dry logic and then move on to tests and observations.
+
+Let's start by considering the logic of weather features in predicting Uber demand in September. Since we're analyzing data from 10-30 September, we can look at specific weather conditions:
+
+Snow (is_snowing_last_hour): It is highly unlikely to have snow in New York in September. Therefore, the feature related to snow is most likely irrelevant to our prediction task and can be excluded.
+From google: While it's possible to snow as early as November and as late as April, snowfall in these months is extremely unlikely. Snowfall is certainly not of concern from May through October, outside of the extremely rare occurrence.
+
+Rain (is_raining_last_hour): Although rain can influence Uber demand, we might want to analyze the historical rainfall pattern in September. Rain may be worth considering, as rain can directly affect ride demand, especially during evening hours.
+
+Temperature-related features (temp, feels_like): These are usually relevant, as weather conditions influence how people choose transportation. Extreme heat or cold can increase ride demand, especially in a city like New York where people walk frequently.
+
+Wind speed: This might be a secondary factor, but high winds could discourage people from walking, increasing the need for Uber. It's typically not a major predictor, but we can keep it initially and see if the data shows any correlation.
+
+Cloud cover (clouds_all): Cloud cover is usually not a direct predictor of Uber rides unless it’s related to rain. If cloud cover in September was consistent or didn't vary significantly, this feature could be less useful.
+
+Humidity: Humidity could play a role, but its relevance is usually secondary compared to other weather factors like rain or temperature.
+
+
+To determine which features are less likely to explain or predict the number of pickups, we will start with a combination of correlation analysis and feature importance methods. Let's take a look:
+
 #### Descriptive Statistics and Visualization
+```{r descriptive_statistics}
+# Define a function for correlation analysis and visualization
+analyze_correlation <- function(data) {
+  # Select the relevant columns for correlation analysis
+  numeric_features <- data[, c("number_of_pickups", "temp", "humidity", "wind_speed", 
+                               "feels_like", "clouds_all")]
+  
+  # Calculate the correlation matrix
+  cor_matrix <- cor(numeric_features, use = "complete.obs")
+  
+  # Print the correlation matrix
+  print(cor_matrix)
+  
+  # Visualize the correlation matrix
+  corrplot(cor_matrix, method = "circle")
+}
+
+# Call the function for train_filtered_1000m_data
+analyze_correlation(train_filtered_1000m_data)
+
+# Call the function for train_filtered_2000m_data
+analyze_correlation(train_filtered_2000m_data)
+
+```
+As you can see, indeed as we expected, temperature and feels like very coordinated (0.9926).
+Clouds_all and humidity features also has a fairly high correlation (0.61072). 
+Everything else is slightly correlated.
+Let's continue with further observations:
+
+Correlation check with all the features:
+```{r}
+# Define a function to calculate and print the correlation matrix
+calculate_correlation <- function(data) {
+  # Select the relevant columns for correlation analysis
+  numeric_features <- data[, c("temp", "humidity", "wind_speed", 
+                               "feels_like", "clouds_all", 
+                               "is_raining_last_hour", "is_snowing_last_hour",
+                               "is_night", "is_weekend")]
+  
+  # Calculate the correlation matrix
+  cor_matrix <- cor(numeric_features, use = "complete.obs")
+  
+  # Print the correlation matrix
+  print(cor_matrix)
+}
+
+# Call the function for train_filtered_1000m_data
+calculate_correlation(train_filtered_1000m_data)
+
+# Call the function for train_filtered_2000m_data
+calculate_correlation(train_filtered_2000m_data)
+
+```
+
+
+The NA values in the is_snowing_last_hour row of the correlation matrix occur because the is_snowing_last_hour feature likely contains only a constant value (like all zeros), resulting in a standard deviation of zero. Correlation cannot be computed if there is no variability in the data, which leads to NA in the correlation matrix.
+
+Why This Happens:
+Zero Variance: If a feature contains only a single value for all rows (e.g., all zeros or all NAs), its standard deviation is zero. Since correlation measures the co-movement of two variables, the absence of variability makes it impossible to compute correlation.
+Constant Feature: If all values in is_snowing_last_hour are NA, R cannot compute a correlation, resulting in NA in the correlation matrix.
+We checked NA's - The first option sounds reasonable, let's check:
+
 
 ```{r}
-colnames(train_filtered_1000m_data)
+# Define a function to check if a column has constant or NA values, and print the dataset name
+check_constant_or_na <- function(data, column_name, dataset_name) {
+  # Get the unique values from the specified column
+  unique_values <- unique(data[[column_name]])
+  
+  # Output the unique values
+  print(paste("Unique values in", column_name, "for", dataset_name, ":"))
+  print(unique_values)
+  
+  # Check if all values are NA or constant
+  if (length(unique_values) == 1 && is.na(unique_values)) {
+    print(paste("All values in", column_name, "for", dataset_name, "are NA."))
+  } else if (length(unique_values) == 1) {
+    print(paste("All values in", column_name, "for", dataset_name, "are constant:", unique_values))
+  } else {
+    print(paste("There is variability in", column_name, "for", dataset_name))
+  }
+}
+
+# Call the function for 'is_snowing_last_hour' in train_filtered_1000m_data
+check_constant_or_na(train_filtered_1000m_data, "is_snowing_last_hour", "train_filtered_1000m_data")
+
+# Call the function for 'is_snowing_last_hour' in train_filtered_2000m_data
+check_constant_or_na(train_filtered_2000m_data, "is_snowing_last_hour", "train_filtered_2000m_data")
+
+```
+
+Therefore we will subtract this variable in checking to make sure this is the problem:
+
+```{r}
+# Select the relevant columns for correlation analysis
+numeric_features <- train_filtered_1000m_data[, c("temp", "humidity", "wind_speed", 
+                                                  "feels_like", "clouds_all", 
+                                                  "is_raining_last_hour",
+                                                  "is_night", "is_weekend")]
+
+# Calculate and print the correlation matrix
+cor_matrix <- cor(numeric_features, use = "complete.obs")
+print(cor_matrix)
+```
+Great - We will omit this variable later.
+Now, another check, for multicollinearity among features. If some features are highly correlated with each other, we might want to drop one of them to avoid redundancy. This is done using the Variance Inflation Factor (VIF):
+
+```{r}
+# Load necessary libraries
+library(car)
+
+# Fit a linear model to calculate VIF
+model <- lm(number_of_pickups ~ temp + humidity + wind_speed + feels_like + clouds_all + is_raining_last_hour + is_night + is_weekend, data = train_filtered_1000m_data)
+
+# Calculate VIF
+vif_values <- vif(model)
+print(vif_values)
+
+# Drop features with VIF > 5 (indicative of multicollinearity)
+```
+
+It looks like you have a very high Variance Inflation Factor (VIF) for both temp (116.32) and feels_like (113.91), which suggests strong multicollinearity between these two variables. This is consistent with the high correlation (almost 1) between temp and feels_like that we observed earlier.
+
+Actions to Take:
+Drop one of the highly collinear features: In this case, since temp and feels_like are almost identical, we can drop one of them (likely feels_like since temp is more commonly used).
+
+Summary:
+We performed 2 tests, a correlation test and a multicollinearity test (VIF) and decided that the feature "feels_like" will be removed.
+Also, we removed "is_snowing_last_hour" since it has only one value = 0. There was no snow and it is not expected to snow during the time period we are forecasting (explained earlier).
+
+
+Removing Features:
+```{r}
+# Define a function to remove specific columns from a dataset
+remove_columns <- function(data, columns_to_remove) {
+  # Remove the specified columns from the dataset
+  data <- data[, !names(data) %in% columns_to_remove]
+  return(data)
+}
+
+# Columns to be removed
+columns_to_remove <- c("feels_like", "is_snowing_last_hour")
+
+# Remove the columns from train_filtered_1000m_data
+train_filtered_1000m_data <- remove_columns(train_filtered_1000m_data, columns_to_remove)
+
+# Remove the columns from train_filtered_2000m_data
+train_filtered_2000m_data <- remove_columns(train_filtered_2000m_data, columns_to_remove)
+
+# Printing col names:
+print(colnames(train_filtered_1000m_data))
 cat("\n")
-colnames(train_filtered_2000m_data)
+print(colnames(train_filtered_2000m_data))
 
 ```
+
+About the features we imported from the empire-state-weather-2014.csv:
+
+humidity: Humidity on its own, while affecting comfort, doesn’t have a strong direct link to transportation choices like Uber. It’s less noticeable for people compared to rain or temperature. Moreover, in moderate ranges, it might not significantly impact decision-making for taking an Uber.
+
+wind_speed: Unless the wind is extremely strong, it usually does not impact daily decision-making for commuting. In New York, moderate winds are common and unlikely to have much influence on whether someone calls for an Uber.
+
+clouds_all: Cloud cover may have some impact on comfort, but it lacks a direct influence on mobility decisions. People aren’t as likely to alter their transportation plans based on clouds alone unless they’re associated with imminent rain, which is already captured by the "is_raining_last_hour" feature.
+
+Features to Keep:
+temp (Temperature): Temperature has a clear and direct impact on transportation choices. In both extreme heat and cold, people are less willing to walk or use public transit. In New York, uncomfortable temperatures, whether very hot or very cold, can drive people to opt for Uber rides. Hence, it’s a strong predictor of pickup demand.
+
+is_raining_last_hour: Rain is one of the most significant factors that influence Uber pickups. When it rains, people are much more likely to avoid walking, biking, or using public transportation, and instead call for a ride. This feature captures a clear, observable shift in behavior, making it a strong predictor of ride demand.
+
+Conclusion:
+By focusing on temperature and rain, we are capturing the two most significant environmental factors of temperature that directly affect people's willingness to use Uber in New York. These factors explain a substantial amount of variability in Uber pickup demand, especially compared to more passive features like cloud cover or wind speed, which have less immediate impact on transportation decisions.
+
+This logical reduction simplifies our model, allowing us to focus on the most influential features without losing explanatory power.
+
+Great!
+Now, Lets do some visualizations to understand how the variables behave:
+```{r}
+# Basic summary statistics
+summary(train_filtered_1000m_data)
+summary(train_filtered_2000m_data)
+```
+Summary of Descriptive Statistics:
+1. train_filtered_1000m_data
+Number of Pickups: Ranges from 1 to 190, with a mean of 44.5, suggesting moderate demand overall.
+Temperature: Ranges from 4.24°C to 33.19°C, with a mean of 22.43°C. This indicates the dataset covers a broad range of temperatures from cool to hot.
+Humidity: Varies from 13% to 94%, with an average of 52.15%, suggesting a mix of dry and humid conditions.
+Wind Speed: Ranges from 0.51 to 14.92 m/s, with a mean of 5.56 m/s, indicating a range from calm to breezy days.
+Cloud Cover: Varies from 0% to 100%, with an average of 39.8%, indicating frequent clear to partly cloudy days.
+Is Raining: Rain occurred in ~16% of the intervals, as shown by the mean value of 0.1594.
+
+2. train_filtered_2000m_data
+Number of Pickups: Ranges from 9 to 204, with a higher average of 132, indicating higher demand compared to the 1000m dataset.
+Temperature, Humidity, Wind Speed, Cloud Cover: The ranges and averages for these features are nearly identical to the 1000m dataset, reflecting similar environmental conditions.
+Is Raining: Rain occurred in ~16% of the intervals, similar to the 1000m dataset.
+Conclusion:
+The 2000m dataset shows higher pickup demand on average compared to the 1000m dataset.
+Both datasets have similar weather conditions and rain occurrence - makes sense because both datasets are in more or less the same area in New York.
+
+
+1. Distribution of Number of Pickups
+We start by visualizing the distribution of the dependent variable (number_of_pickups).
+```{r}
+# Define a function to create the histogram for the distribution of "number_of_pickups"
+plot_pickup_distribution <- function(data, dataset_name) {
+  ggplot(data, aes(x = number_of_pickups)) +
+    geom_histogram(bins = 30, fill = "blue", color = "black") +
+    labs(
+      title = paste("Distribution of Number of Pickups -", dataset_name),
+      x = "Number of Pickups",
+      y = "Count"
+    )
+}
+
+# Call the function for train_filtered_1000m_data_cleaned
+plot_pickup_distribution(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data_cleaned
+plot_pickup_distribution(train_filtered_2000m_data, "train_filtered_2000m_data")
+
+```
+
+Here is a brief summary based on the graph:
+
+train_filtered_1000m_data:
+The majority of pickups fall within the lower range, with most values between 10 and 60 pickups.
+The distribution has a right skew, meaning there are fewer intervals with higher numbers of pickups (above 100).
+The highest frequency of intervals is observed around 20–40 pickups, which suggests that this range is the most common in the data.
+Pickups greater than 100 are rare, indicating that high-demand periods are less frequent in the dataset.
+
+train_filtered_2000m_data:
+
+Shape of Distribution:
+The distribution is approximately bell-shaped, with most pickups concentrated between 100 to 300 pickups.
+The peak of the distribution is around 200 pickups, indicating that this is the most frequent number of pickups in the dataset.
+
+Right Skew:
+There is a slight right skew, meaning there are fewer intervals with a very high number of pickups (above 400).
+The distribution tapers off after 300 pickups, with only a few intervals having pickups above 400.
+Common Pickup Range:
+
+Most of the data points lie between 100 and 300 pickups, suggesting that this is the typical demand range in the area covered by this dataset.
+
+Summary:
+The number of Uber pickups in the 2000m radius dataset follows a bell-shaped distribution, with a peak around 200 pickups and fewer instances of extreme values (either low or high). This distribution suggests that the demand is generally consistent, with most intervals showing moderate levels of Uber pickups.
+
+2. Number of Pickups vs. Temperature
+Temperature has a strong impact on people's decision to use Uber, especially during extreme weather conditions.
+```{r}
+# Define a function to create the scatter plot for "temp" vs "number_of_pickups"
+plot_temp_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = temp, y = number_of_pickups)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", color = "red") +
+    labs(
+      title = paste("Number of Pickups vs. Temperature -", dataset_name),
+      x = "Temperature (°C)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data_cleaned
+plot_temp_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data_cleaned
+plot_temp_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+
+```
+train_filtered_1000m_data:
+Spread of Data: The points are widely scattered, indicating that temperature alone does not have a strong, clear impact on the number of pickups. There is significant variation in the number of pickups across all temperature ranges.
+
+Slight Positive Trend: The red line, which represents the linear regression fit, shows a slight upward trend, indicating a weak positive correlation between temperature and the number of pickups. As temperature increases, there is a small increase in the number of pickups, but the relationship is not very strong.
+
+Variability Across Temperatures: There are high variances in the number of pickups at all temperature levels. This suggests that other factors (e.g., rain, time of day) might influence Uber demand more than temperature alone.
+
+Summary:
+While there is a slight positive relationship between temperature and Uber pickups, the effect of temperature seems minimal. Other factors may have a stronger influence on demand in New York City, as indicated by the high variability in the number of pickups at all temperature levels.
+
+
+train_filtered_2000m_data:
+General Trend:
+The red line represents a linear regression, showing a slight positive correlation between temperature and the number of Uber pickups. As the temperature increases, the number of pickups tends to increase slightly.
+
+Data Spread:
+The data points are widely scattered, indicating significant variability in Uber pickups across different temperature ranges. This suggests that while temperature has some impact on the number of pickups, other factors may play a larger role in driving demand.
+
+Pickup Clusters:
+The majority of pickups are clustered between 200 to 300 pickups across various temperature levels, indicating relatively stable demand regardless of temperature.
+There are a few extreme values above 400 pickups, but these are less frequent and spread across the entire temperature range.
+
+Summary:
+The plot indicates a weak but positive relationship between temperature and the number of pickups. While the number of pickups tends to increase slightly with rising temperatures, the wide spread of data suggests that temperature alone does not have a strong predictive power on Uber demand. Other factors likely play a more significant role.
+
+
+
+3. Number of Pickups vs. Rain (is_raining_last_hour)
+Rain has a direct effect on Uber pickups as people tend to avoid walking in rainy weather.
 
 ```{r}
-# Bar Plot: Average Number of Pickups by Weekday vs Weekend
-ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pickups)) +
-  stat_summary(fun = "mean", geom = "bar", fill = "lightblue") +
-  labs(title = "Average Number of Pickups: Weekday vs Weekend", 
-       x = "Is Weekend (0 = Weekday, 1 = Weekend)", 
-       y = "Average Number of Pickups") +
-  theme_minimal()
+# Define a function to create the boxplot for "is_raining_last_hour" vs "number_of_pickups"
+plot_rain_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = factor(is_raining_last_hour), y = number_of_pickups)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Number of Pickups vs. Rain -", dataset_name),
+      x = "Rain in the Last Hour (0: No, 1: Yes)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data_cleaned
+plot_rain_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data_cleaned
+plot_rain_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
 ```
+train_filtered_1000m_data:
+Rain Effect:
+When it rains (1), the median number of pickups is higher compared to when it does not rain (0). This suggests that rain generally increases the demand for Uber rides.
+Spread and Variability:
+
+The range of the number of pickups is wider during rainy periods, with more outliers above 100 pickups. This indicates that some rainy periods lead to a significant spike in Uber demand.
+Without rain, the distribution is more compact, with fewer outliers and a lower median.
+
+Outliers:
+Both when it rains and doesn’t rain, there are outliers (higher pickup numbers). However, there are more extreme values (pickups above 150) when it rains, indicating that rain can sometimes cause a significant increase in demand.
+
+Summary:
+The plot confirms that rain increases the number of Uber pickups. The median and upper ranges of pickups are higher when it rains, and the distribution suggests more variability in demand during rainy periods. Rain can cause surges in demand for Uber rides, making it a key factor in predicting pickups.
+
+train_filtered_2000m_data:
+No Rain (0):
+The median number of pickups is around 200 when there was no rain in the last hour.
+The range of pickups is larger, with some extreme outliers reaching 500 pickups, suggesting that during dry periods, demand can spike due to various factors like events or commutes.
+
+Rain (1):
+The median number of pickups during rain is slightly higher than during dry periods, indicating that rain has a positive effect on Uber demand.
+The range of pickups during rain is narrower, with fewer extreme outliers compared to dry conditions, suggesting that demand is more stable during rainy periods, though still elevated.
+
+Summary:
+Rain generally increases the number of Uber pickups slightly, with more stable demand compared to dry periods. However, during non-rainy hours, the demand is more variable, with some periods seeing much higher spikes in pickups, likely driven by other factors such as events or busy periods.
+
+
+4. Number of Pickups vs. Is Night
+```{r}
+# Define a function to create the boxplot for "is_night" vs "number_of_pickups"
+plot_night_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = factor(is_night), y = number_of_pickups)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Number of Pickups vs. Night -", dataset_name),
+      x = "Is Night (0: No, 1: Yes)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data
+plot_night_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data
+plot_night_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+
+```
+train_filtered_1000m_data summary:
+Daytime (0):
+The median number of pickups is higher.
+A wider range of pickups is seen, with more outliers above 100 pickups, indicating periods of higher demand (possibly due to rush hours or events).
+
+Nighttime (1):
+The median number of pickups is lower, and the overall distribution is more compact.
+Fewer extreme outliers are present, indicating more consistent but lower demand during the night.
+Overall, Uber demand is generally higher during the day but remains steady at lower levels through the night.
+
+train_filtered_2000m_data summary:
+Daytime (0):
+The median number of pickups is slightly higher during the day (around 200 pickups).
+There is a wider range of pickups, with some extreme outliers going up to 500 pickups. This suggests periods of higher demand during the day, likely driven by commutes and events.
+
+Nighttime (1):
+The median number of pickups at night is slightly lower compared to the day.
+There is a narrower range of values for pickups at night, but still some outliers. This suggests more consistent but slightly lower demand during night hours.
+
+Summary:
+During the day, the number of Uber pickups tends to be higher, with more variation and spikes in demand. At night, the demand is slightly lower and more stable, with fewer extreme peaks, though there are still some higher-demand periods likely tied to nightlife or events.
+
+
+
+5. Number of Pickups vs. Is Weekend
+Weekends generally see different commuting patterns compared to weekdays, with more leisure-related travel rather than work commutes.
 
 ```{r}
-# Line plot of pickups over time
-ggplot(train_filtered_1000m_data, aes(x = time_interval, y = number_of_pickups)) +
-  geom_line(color = "blue") +
-  labs(title = "Pickups Over Time",
-       x = "Time Interval",
-       y = "Number of Pickups") +
-  theme_minimal()
+# Define a function to create the boxplot for "is_weekend" vs "number_of_pickups"
+plot_weekend_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = factor(is_weekend), y = number_of_pickups)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Number of Pickups vs. Weekend -", dataset_name),
+      x = "Is Weekend (0: Weekday, 1: Weekend)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data
+plot_weekend_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data
+plot_weekend_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+
 ```
 
+train_filtered_1000m_data: 
+Weekdays (0):
+The median number of pickups is higher on weekdays.
+The range of pickups is wider on weekdays, with more outliers above 100 pickups, indicating higher demand variability during weekdays.
+Some extreme outliers suggest that certain periods on weekdays can see significantly increased demand, possibly due to work commutes or events.
+
+Weekends (1):
+The median number of pickups is lower on weekends compared to weekdays.
+There are fewer extreme outliers on weekends, and the distribution is more compact, suggesting that demand is generally lower and more stable during weekends.
+
+Summary:
+Uber demand is higher and more variable on weekdays, likely driven by work-related commuting and peak hours. On weekends, demand is lower and more consistent, possibly due to reduced work-related travel and more leisure trips, which are less frequent.
+
+
+train_filtered_2000m_data:
+Weekdays (0):
+The median number of pickups is slightly higher on weekdays than on weekends, around 200 pickups.
+The range of pickups is larger on weekdays, with outliers extending up to 500 pickups, suggesting periods of high demand likely driven by work commutes or events.
+
+Weekends (1):
+The median number of pickups is slightly lower than on weekdays but still close to 200 pickups, indicating stable demand over the weekend.
+There are fewer extreme outliers, and the range of pickups is narrower compared to weekdays, reflecting more consistent but slightly lower demand.
+
+Summary:
+Overall, the number of pickups on weekdays and weekends is relatively similar, with a slightly higher median on weekdays. However, weekday demand shows more variability with higher peaks, while weekend demand is more stable with fewer extreme periods of high demand.
+
+
+
+Some time series visualizations:
 ```{r}
-# Boxplot: Number of Pickups on Weekdays vs Weekends
-ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pickups, fill = factor(is_weekend))) +
-  geom_boxplot() +
-  labs(title = "Number of Pickups: Weekdays vs Weekends", 
-       x = "Is Weekend (0 = Weekday, 1 = Weekend)", 
-       y = "Number of Pickups", 
-       fill = "Weekend Indicator") +
-  theme_minimal()
+# Define a function to plot time series of pickups over time
+plot_time_series_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = rounded_timestamp, y = number_of_pickups, group = 1)) +
+    geom_line(color = "blue", size = 1) +
+    labs(
+      title = paste("Time Series of Pickups Throughout the Day -", dataset_name),
+      x = "Time (15-minute intervals)",
+      y = "Number of Pickups"
+    ) +
+    theme_minimal()
+}
+
+
+# Call the function for train_filtered_1000m_data
+plot_time_series_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data
+plot_time_series_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
 
 ```
 
-```{r}
-# Check the range of the 'rounded_timestamp' column
-range(train_filtered_1000m_data$rounded_timestamp)
+The plot indicates that Uber demand in this area shows regular cycles of high and low activity, with notable peaks in demand occurring periodically. The sharp spikes and wide variability reflect the changing demand for Uber throughout each day, potentially influenced by commuting patterns or events in the city.
 
-```
 
-```{r}
-# Time Series: Pickups over time
-ggplot(train_filtered_1000m_data, aes(x = rounded_timestamp, y = number_of_pickups, group = 1)) +
-  geom_line(color = "blue", size = 1) +
-  labs(title = "Time Series of Pickups Throughout the Day", 
-       x = "Time (15-minute intervals)", 
-       y = "Number of Pickups") +
-  theme_minimal()
-
-```
 
 ```{r}
 # Plot lag relationship between pickup counts at different time lags
@@ -1350,20 +1922,9 @@ for (i in 1:6) {
 }
 
 ```
-Strong Positive Correlation:
+Conclusion:
+This analysis suggests that Uber demand in the area has a strong short-term dependency. Predicting future pickups based on past data would likely benefit from using recent time intervals (within the last 30 minutes) rather than older data. As the time lag increases, past data becomes less useful for making predictions.
 
-The points in the lag plot are closely aligned along a diagonal line, indicating a strong positive correlation between the number of pickups at time t and the number of pickups at time t-1 (one lag prior).
-This means that the number of pickups at one time step is highly influenced by the number of pickups in the previous time step. If there were many pickups at time t-1, there will likely be a similar number of pickups at time t.
-
-Insights:
-Predictability: Since there is a strong positive correlation between current and previous pickups, this suggests that the number of pickups is highly predictable based on recent data. A time series model like ARIMA or Exponential Smoothing should perform well in forecasting future pickup trends.
-Lagged Effects: The correlation across time steps indicates that demand cycles are quite smooth and continuous, with pickup numbers transitioning gradually from one time step to the next rather than fluctuating wildly.
-
-#### Dealing with outliers
-```{r outliers}
-# not sure if needed here or at all
-
-```
 
 ## Part C: Forecast for the Future
 

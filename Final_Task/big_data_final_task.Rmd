@@ -869,9 +869,10 @@ test_fixed_data
 
 #### Data from the Web: External Data Integration
 
+##### Weather
 Here is a CSV of the history weather bulk for Empire State Building (40.75,-73.99) from January 01, 2014 to December 31, 2014.
 * The parameters of the data explained here: https://openweathermap.org/history-bulk
-
+ 
 ```{r}
 # Load the CSV file
 weather_data <- read_csv("empire-state-weather-2014.csv")
@@ -969,7 +970,7 @@ test_fixed_data
 ```
 
 ```{r}
-head(weather_data)
+weather_data
 ```
 
 Select the Required Columns from the Weather Data:
@@ -1014,6 +1015,209 @@ Notes:
 
 * No Additional Rows from Weather Data: The weather data is not expanded to include extra rows in the Uber pickup datasets. Only the relevant weather columns are added to the existing rows in the Uber data.
 
+##### Crashes
+Here we will add data about motor vehicle collisions in New York City: https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95/about_data. By incorporating data from the Motor Vehicle Collisions - Crashes dataset, we aim to capture how traffic accidents may impact Uber demand. Traffic congestion and accidents can lead to delays or reduced availability of Uber vehicles in certain areas, affecting both the supply of drivers and the demand for rides.
+
+We have two CSV files (crashes_sums_1000m.csv and crashes_sums_2000m.csv) that contain crash data within and above a 1000-meter and 2000-meter radius of the Empire State Building, respectively. The columns include:
+* crash_time_15min: The timestamp for each 15-minute interval.
+* number_of_persons_injured: The number of people injured in crashes within that time interval.
+* number_of_persons_killed: The number of people killed in crashes within that time interval.
+* number_of_crashes: The total number of crashes occurring within that time interval.
+
+How This Data Can Be Helpful for Predictions:
+1. Traffic Impact on Uber Demand:
+High numbers of crashes, especially those causing injuries or fatalities, could lead to significant traffic disruptions. These disruptions may reduce the number of available Uber vehicles, or create increased demand as people opt for ride-hailing services over other transportation options.
+By correlating the crash data with Uber pickup data, you may notice patterns where crash events (even within specific time intervals) affect demand. This correlation could provide valuable insight for predicting Uber demand, particularly during peak traffic hours or in highly trafficked areas.
+
+2. Safety Concerns:
+Time periods or areas with higher crash rates might temporarily reduce Uber ridership as people become more cautious about traveling, potentially affecting demand patterns.
+By including this crash data, you can capture these safety concerns and measure their influence on demand.
+
+3. Modeling the Impact:
+By incorporating the number_of_persons_injured, number_of_persons_killed, and number_of_crashes features from this crash data, you can directly account for the effect of accidents on Uber demand.
+Crashes can be treated as external factors contributing to demand variability. In your model, you can test how these variables affect demand forecasting, which could provide more accurate predictions, especially in periods with high crash activity.
+```{r load_data}
+crashes_sums_1000m <- read.csv("crashes_sums_1000m.csv")
+crashes_sums_2000Am <- read.csv("crashes_sums_2000Am.csv")
+```
+
+```{r}
+crashes_sums_1000m
+```
+
+```{r}
+crashes_sums_2000Am
+```
+
+fix crash_time_15min format:
+(We will use a general function that can be useful in the future)
+```{r}
+convert_time_to_datetime <- function(data, time_column) {
+  data %>%
+    mutate(!!time_column := as.POSIXct(!!sym(time_column), format = "%Y-%m-%d %H:%M:%S", tz = "UTC"))
+}
+```
+
+```{r}
+# Usage for 1000m crash data
+crashes_sums_1000m <- convert_time_to_datetime(crashes_sums_1000m, "crash_time_15min")
+crashes_sums_1000m
+```
+
+```{r}
+# Usage for 2000m crash data
+crashes_sums_2000Am <- convert_time_to_datetime(crashes_sums_2000Am, "crash_time_15min")
+crashes_sums_2000Am
+```
+
+Checking time range:
+```{r}
+range(crashes_sums_1000m$crash_time_15min)
+```
+
+```{r}
+range(crashes_sums_2000Am$crash_time_15min)
+```
+
+Here we will merge the crash data features with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join where crash_time_15min = time_interval:
+```{r}
+# Function to merge crash data with train or test data
+merge_crash_data <- function(data, crash_data) {
+  data %>%
+    left_join(crash_data, by = c("time_interval" = "crash_time_15min"))
+}
+```
+
+```{r}
+# Merge crash data with the 1000m Uber dataset
+train_filtered_1000m_data <- merge_crash_data(train_filtered_1000m_data, crashes_sums_1000m)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge crash data with the 2000m Uber dataset
+train_filtered_2000m_data <- merge_crash_data(train_filtered_2000m_data, crashes_sums_2000Am)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge crash data with the test Uber dataset
+test_fixed_data <- merge_crash_data(test_fixed_data, crashes_sums_1000m)
+test_fixed_data
+```
+
+##### Events
+TODO - add explanations!
+
+```{r load_data}
+nyc_event_counts <- read.csv("nyc_event_counts.csv")
+nyc_event_counts
+```
+
+fix the time interval format:
+
+```{r}
+nyc_event_counts <- convert_time_to_datetime(nyc_event_counts, "time_interval")
+nyc_event_counts
+```
+
+Checking time range:
+```{r}
+range(nyc_event_counts$time_interval)
+```
+
+Here we will merge the nyc_event_counts dataset with train_filtered_1000m_data, train_filtered_2000m_data, and test_fixed_data using a left_join on the time_interval column:
+```{r}
+# Function to merge event data with train or test data
+merge_event_data <- function(data, event_data) {
+  data %>%
+    left_join(event_data, by = "time_interval")
+}
+```
+
+```{r}
+# Merge event data with train_filtered_1000m_data
+train_filtered_1000m_data <- merge_event_data(train_filtered_1000m_data, nyc_event_counts)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge event data with train_filtered_2000m_data
+train_filtered_2000m_data <- merge_event_data(train_filtered_2000m_data, nyc_event_counts)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge event data with test_fixed_data
+test_fixed_data <- merge_event_data(test_fixed_data, nyc_event_counts)
+test_fixed_data
+```
+
+##### Yellow Taxis
+TODO - add explanations!
+```{r load_data}
+yellow_taxis_1000m <- read.csv("yellow_taxis_pickup_counts_1000m.csv")
+yellow_taxis_2000Am <- read.csv("yellow_taxis_pickup_counts_2000Am.csv")
+```
+
+```{r}
+yellow_taxis_1000m
+```
+
+```{r}
+yellow_taxis_2000Am
+```
+
+
+fix crash_time_15min format:
+```{r}
+# Usage for 1000m crash data
+yellow_taxis_1000m <- convert_time_to_datetime(yellow_taxis_1000m, "pickup_time_15min")
+yellow_taxis_1000m
+```
+
+```{r}
+# Usage for 2000m crash data
+yellow_taxis_2000Am <- convert_time_to_datetime(yellow_taxis_2000Am, "pickup_time_15min")
+yellow_taxis_2000Am
+```
+
+Checking time range:
+```{r}
+range(yellow_taxis_1000m$crash_time_15min)
+```
+
+```{r}
+range(yellow_taxis_2000Am$crash_time_15min)
+```
+
+Here we will merge the yellow taxis data pickup count with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join where pickup_time_15min = time_interval:
+```{r}
+# Function to merge yellow taxis data with train or test data
+merge_taxis_data <- function(data, yellow_taxis_data) {
+  data %>%
+    left_join(yellow_taxis_data, by = c("time_interval" = "pickup_time_15min"))
+}
+```
+
+```{r}
+# Merge yellow_taxis data with the 1000m Uber dataset
+train_filtered_1000m_data <- merge_taxis_data(train_filtered_1000m_data, yellow_taxis_1000m)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge yellow_taxis data with the 2000m Uber dataset
+train_filtered_2000m_data <- merge_taxis_data(train_filtered_2000m_data, yellow_taxis_2000Am)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge yellow_taxis data with the test Uber dataset
+test_fixed_data <- merge_taxis_data(test_fixed_data, yellow_taxis_1000m)
+test_fixed_data
+```
+
 Lets check NAs after adding new features:
 ```{r}
 # For 1000m data
@@ -1038,19 +1242,15 @@ print(nas_test)
 ```
 NAs for only number_of_pickups - this is what we need to predict          
 
-#### Dealing with outliers
-```{r outliers}
-# not sure if needed here or at all
-
-```
-
 ```{r}
 # Assuming your table (data frame) is named 'my_table'
 # write.csv(train_filtered_1000m_data, "train_filtered_1000m_data.csv")
 # write.csv(train_filtered_2000m_data, "train_filtered_2000m_data.csv")
 ```
+
 ### 2. Exploratory Analysis
 
+TODO - ADD MORE INFO:
 1. Actions Taken on the Data (Data Cleaning and Transformation):
 Start by documenting what actions have been performed on the data:
 
@@ -1062,26 +1262,6 @@ New Variables: The dataset includes additional columns like time_interval, numbe
 and also an helper feature rounded_timestamps: The timestamps were rounded to 15-minute intervals.
 
 #### Descriptive Statistics and Visualization
-```{r descriptive_statistics}
-# # Calculate summary statistics for the 1000m dataset
-# summary_stats_1000m <- train_filtered_1000m_data %>%
-#   select(dist, number_of_pickups, hour, is_weekend, is_morning, is_afternoon, is_evening) %>%
-#   summary()
-
-# # Print summary statistics for the 1000m dataset
-# cat("Summary statistics for 1000m dataset:\n")
-# print(summary_stats_1000m)
-
-# Calculate summary statistics for the 2000m dataset
-# summary_stats_2000m <- train_filtered_2000m_data %>%
-#   select(dist, number_of_pickups, hour, is_weekend, is_morning, is_afternoon, is_evening) %>%
-#   summary()
-
-# Print summary statistics for the 2000m dataset
-# cat("\nSummary statistics for 2000m dataset:\n")
-# print(summary_stats_2000m)
-
-```
 
 ```{r}
 colnames(train_filtered_1000m_data)
@@ -1091,81 +1271,6 @@ colnames(train_filtered_2000m_data)
 ```
 
 ```{r}
-# # 1. Scatter Plot: Number of pickups vs. Distance (dist)
-# ggplot(train_filtered_1000m_data, aes(x = dist, y = number_of_pickups)) +
-#   geom_point(color = "blue", alpha = 0.6) +
-#   labs(title = "Number of Pickups vs Distance (1000m radius)", 
-#        x = "Distance from Empire State Building (m)", 
-#        y = "Number of Pickups") +
-#   theme_minimal()
-
-# # 2. Boxplot: Number of pickups by Hour of the day
-# ggplot(train_filtered_1000m_data, aes(x = factor(hour), y = number_of_pickups)) +
-#   geom_boxplot(fill = "orange") +
-#   labs(title = "Number of Pickups by Hour (1000m radius)", 
-#        x = "Hour of the Day", 
-#        y = "Number of Pickups") +
-#   theme_minimal()
-# 
-
-# Boxplot: Number of Pickups by Weekend/Weekday
-ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pickups)) +
-  geom_boxplot(fill = "purple") +
-  labs(title = "Number of Pickups on Weekdays vs Weekends", 
-       x = "Is Weekend (1 = Yes, 0 = No)", 
-       y = "Number of Pickups") +
-  theme_minimal()
-
-
-# # Scatter Plot: Number of Pickups by Hour for Specific Bases (e.g., B02598)
-# ggplot(train_filtered_1000m_data, aes(x = hour, y = number_of_pickups, color = factor(is_B02598))) +
-#   geom_point(alpha = 0.6) +
-#   labs(title = "Number of Pickups by Hour for Base B02598", 
-#        x = "Hour of the Day", 
-#        y = "Number of Pickups", color = "Is Base B02598") +
-#   theme_minimal()
-# 
-
-# # Repeat for the 2000m dataset (similar plots can be created for comparison)
-# # 1. Scatter Plot: Number of pickups vs. Distance (dist) for 2000m
-# ggplot(train_filtered_2000m_data, aes(x = dist, y = number_of_pickups)) +
-#   geom_point(color = "red", alpha = 0.6) +
-#   labs(title = "Number of Pickups vs Distance (2000m radius)", 
-#        x = "Distance from Empire State Building (m)", 
-#        y = "Number of Pickups") +
-#   theme_minimal()
-
-# # Boxplot: Number of Pickups by Time of Day
-# ggplot(train_filtered_1000m_data, aes(x = factor(time_of_day), y = number_of_pickups)) +
-#   geom_boxplot(fill = "purple") +
-#   labs(title = "Number of Pickups by Time of Day", 
-#        x = "Time of Day (Night = 1, Morning = 2, Afternoon = 3, Evening = 4)", 
-#        y = "Number of Pickups") +
-#   theme_minimal()
-
-
-
-```
-
-```{r}
-# # Improved scatter plot: Number of pickups vs. Distance with transparency and smaller points
-# ggplot(train_filtered_1000m_data, aes(x = dist, y = number_of_pickups)) +
-#   geom_point(color = "blue", alpha = 0.3, size = 1) +  # Adding transparency and reducing size
-#   labs(title = "Number of Pickups vs Distance (1000m radius)", 
-#        x = "Distance from Empire State Building (m)", 
-#        y = "Number of Pickups") +
-#   theme_minimal()
-
-# # Alternative: 2D density plot for better clarity
-# ggplot(train_filtered_1000m_data, aes(x = dist, y = number_of_pickups)) +
-#   geom_bin2d(bins = 30) +  # Use 2D binning to visualize the density of points
-#   scale_fill_continuous(type = "viridis") +  # Add color scale for density
-#   labs(title = "2D Density Plot: Number of Pickups vs Distance (1000m radius)", 
-#        x = "Distance from Empire State Building (m)", 
-#        y = "Number of Pickups") +
-#   theme_minimal()
-
-
 # Bar Plot: Average Number of Pickups by Weekday vs Weekend
 ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pickups)) +
   stat_summary(fun = "mean", geom = "bar", fill = "lightblue") +
@@ -1173,7 +1278,9 @@ ggplot(train_filtered_1000m_data, aes(x = factor(is_weekend), y = number_of_pick
        x = "Is Weekend (0 = Weekday, 1 = Weekend)", 
        y = "Average Number of Pickups") +
   theme_minimal()
+```
 
+```{r}
 # Line plot of pickups over time
 ggplot(train_filtered_1000m_data, aes(x = time_interval, y = number_of_pickups)) +
   geom_line(color = "blue") +
@@ -1181,115 +1288,6 @@ ggplot(train_filtered_1000m_data, aes(x = time_interval, y = number_of_pickups))
        x = "Time Interval",
        y = "Number of Pickups") +
   theme_minimal()
-
-# # Histogram of pickups by time of day
-# ggplot(train_filtered_1000m_data, aes(x = hour)) +
-#   geom_histogram(binwidth = 1, fill = "lightblue", color = "black") +
-#   labs(title = "Distribution of Pickups by Hour of Day",
-#        x = "Hour of the Day",
-#        y = "Frequency of Pickups") +
-#   theme_minimal()
-
-# # Bar plot: average number of pickups by time of day
-# ggplot(train_filtered_1000m_data, aes(x = as.factor(hour), y = number_of_pickups)) +
-#   stat_summary(fun = "mean", geom = "bar", fill = "lightgreen") +
-#   labs(title = "Average Number of Pickups by Time of Day",
-#        x = "Hour of the Day",
-#        y = "Average Number of Pickups") +
-#   theme_minimal()
-
-# # Box plot of pickups over time
-# ggplot(train_filtered_1000m_data, aes(x = as.factor(hour), y = number_of_pickups)) +
-#   geom_boxplot(fill = "purple", alpha = 0.5) +
-#   labs(title = "Distribution of Pickups by Hour of the Day",
-#        x = "Hour of the Day",
-#        y = "Number of Pickups") +
-#   theme_minimal()
-
-
-```
-
-```{r}
-# # Heatmap: Number of pickups by hour and base
-# train_filtered_1000m_data %>%
-#   gather(base, value, is_B02598:is_B02764) %>%  # Gather the base columns into a single column
-#   filter(value == 1) %>%  # Only include rows where the base is active
-#   ggplot(aes(x = factor(hour), y = base)) +
-#   geom_tile(aes(fill = number_of_pickups), color = "white") +
-#   scale_fill_gradient(low = "lightblue", high = "darkblue") +
-#   labs(title = "Heatmap of Pickups by Hour and Base", 
-#        x = "Hour of the Day", 
-#        y = "Base", 
-#        fill = "Number of Pickups") +
-#   theme_minimal()
-```
-
-```{r}
-# # Check if there are any pickups for B02512
-# sum(train_filtered_1000m_data$is_B02512 == 1)
-# 
-# colnames(train_filtered_1000m_data)
-
-```
-
-```{r}
-# # Facet Plot: Number of Pickups by Hour, Faceted by Base (with different name for the pivoted column)
-# train_filtered_1000m_data %>%
-#   pivot_longer(cols = c(is_B02598, is_B02617, is_B02682, is_B02764),  # Use only the available base columns
-#                names_to = "base_active", values_to = "value") %>%
-#   filter(value == 1) %>%  # Only include rows where the base is active
-#   ggplot(aes(x = hour, y = number_of_pickups)) +
-#   geom_point(alpha = 0.5, color = "darkgreen") +
-#   facet_wrap(~base_active) +  # Create a facet for each active base
-#   labs(title = "Distribution of Pickups by Hour, Faceted by Active Base", 
-#        x = "Hour of the Day", 
-#        y = "Number of Pickups") +
-#   theme_minimal()
-
-```
-
-```{r}
-# # Map numeric 'time_of_day' values to their respective labels
-# train_filtered_1000m_data <- train_filtered_1000m_data %>%
-#   mutate(time_of_day_label = case_when(
-#     time_of_day == 1 ~ "Night",
-#     time_of_day == 2 ~ "Morning",
-#     time_of_day == 3 ~ "Afternoon",
-#     time_of_day == 4 ~ "Evening",
-#     TRUE ~ "Unknown"
-#   ))
-
-# # Bar Plot: Pickups by Time of Day and Base
-# train_filtered_1000m_data %>%
-#   pivot_longer(cols = c(is_B02598, is_B02617, is_B02682, is_B02764), 
-#                names_to = "base_active", values_to = "value") %>%
-#   filter(value == 1) %>%
-#   ggplot(aes(x = time_of_day_label, y = number_of_pickups, fill = base)) +
-#   geom_bar(stat = "identity", position = "dodge") +
-#   labs(title = "Pickups by Time of Day and Base", 
-#        x = "Time of Day", 
-#        y = "Number of Pickups", 
-#        fill = "Base") +
-#   theme_minimal()
-
-```
-
-```{r}
-# # Line plot showing average pickups by hour for each base
-# train_filtered_1000m_data %>%
-#   pivot_longer(cols = c(is_B02598, is_B02617, is_B02682, is_B02764), 
-#                names_to = "base_active", values_to = "value") %>%
-#   filter(value == 1) %>%
-#   group_by(base, hour) %>%
-#   summarise(avg_pickups = mean(number_of_pickups)) %>%
-#   ggplot(aes(x = hour, y = avg_pickups, color = base)) +
-#   geom_line(size = 1) +
-#   labs(title = "Average Number of Pickups by Hour and Base", 
-#        x = "Hour of the Day", 
-#        y = "Average Number of Pickups", 
-#        color = "Base") +
-#   theme_minimal()
-
 ```
 
 ```{r}
@@ -1322,84 +1320,6 @@ ggplot(train_filtered_1000m_data, aes(x = rounded_timestamp, y = number_of_picku
 ```
 
 ```{r}
-# # Group data by day and hour to find average pickups at different times of the day
-# daily_patterns <- train_filtered_1000m_data %>%
-#   mutate(date = as.Date(rounded_timestamp)) %>%
-#   group_by(date, hour) %>%
-#   summarise(avg_pickups = mean(number_of_pickups)) %>%
-#   ungroup()
-# 
-# # Visualize average pickups per hour over days
-# ggplot(daily_patterns, aes(x = hour, y = avg_pickups, group = date, color = date)) +
-#   geom_line() +
-#   labs(title = "Average Daily Pickup Pattern by Hour", 
-#        x = "Hour of the Day", 
-#        y = "Average Number of Pickups") +
-#   theme_minimal()
-```
-
-```{r}
-# # Add a column to indicate whether the day is a weekend
-# train_filtered_1000m_data <- train_filtered_1000m_data %>%
-#   mutate(weekend = ifelse(weekdays(as.Date(rounded_timestamp)) %in% c("Saturday", "Sunday"), "Weekend", "Weekday"))
-# 
-# # Group by hour and weekend/weekday to analyze patterns
-# weekend_patterns <- train_filtered_1000m_data %>%
-#   group_by(weekend, hour) %>%
-#   summarise(avg_pickups = mean(number_of_pickups)) %>%
-#   ungroup()
-
-# # Visualize patterns for weekdays and weekends
-# ggplot(weekend_patterns, aes(x = hour, y = avg_pickups, color = weekend)) +
-#   geom_line(size = 1) +
-#   labs(title = "Pickup Patterns: Weekdays vs Weekends", 
-#        x = "Hour of the Day", 
-#        y = "Average Number of Pickups") +
-#   theme_minimal()
-
-```
-
-```{r}
-# # Install necessary package for rolling window calculations
-# install.packages("zoo")
-# library(zoo)
-# 
-# # Compute a 7-day rolling mean and standard deviation (assuming 96 15-minute intervals per day)
-# train_filtered_1000m_data <- train_filtered_1000m_data %>%
-#   arrange(rounded_timestamp) %>%
-#   mutate(rolling_mean = rollmean(number_of_pickups, k = 96*7, fill = NA),  # 7-day window
-#          rolling_sd = rollapply(number_of_pickups, width = 96*7, FUN = sd, fill = NA))
-# 
-# # Plot the rolling mean and rolling standard deviation without saving
-# ggplot(train_filtered_1000m_data, aes(x = rounded_timestamp)) +
-#   geom_line(aes(y = rolling_mean), color = "blue", size = 1) +
-#   geom_line(aes(y = rolling_sd), color = "red", linetype = "dashed", size = 0.8) +
-#   labs(title = "Rolling Mean and Standard Deviation of Pickups", 
-#        x = "Date", 
-#        y = "Pickups (7-day Rolling Mean and SD)") +
-#   theme_minimal()
-```
-
-TO Delete ---->
-Breakdown of What You're Seeing:
-7-Day Rolling Mean (Blue Line):
-
-This smooths out daily fluctuations by averaging the data over a 7-day window. It helps identify long-term trends in the data, while ignoring short-term noise.
-The peaks in the blue line indicate periods where the average number of pickups was higher, while the troughs show periods of lower average pickups.
-The pattern you are seeing here appears to be cyclical, with higher pickup activity on certain days of the week (likely weekdays, driven by commuting patterns).
-7-Day Rolling Standard Deviation (Red Line):
-
-The dashed red line represents the rolling standard deviation over the same 7-day window. Standard deviation is a measure of volatility or variability - the higher the value, the more spread out the number of pickups are during that window.
-When the red line spikes, it means that the number of pickups was more volatile, meaning the numbers fluctuated more during that period.
-When the red line is lower, it indicates a more stable period, where the number of pickups was relatively consistent.
-
-Observations:
-Cyclic Nature: There is a repeating pattern of rising and falling rolling means. This suggests a weekly pattern in Uber demand, where demand is likely to be higher on certain days of the week, and lower on others (e.g., weekends).
-Higher Variability Around Peaks: You can observe that the red line (rolling standard deviation) tends to increase during periods where the blue line (rolling mean) spikes. This indicates that variability is higher when demand increases. In other words, during peak periods, there is greater unpredictability or fluctuation in the number of pickups.
-Stable Low Periods: The rolling standard deviation drops during periods of low demand (when the blue line dips). This suggests that low-demand periods are generally more consistent and less variable.
-
-
-```{r}
 # Plot lag relationship between pickup counts at different time lags
 par(mfrow = c(2, 3))  # Set up the plotting area for 6 plots (2 rows, 3 columns)
 for (i in 1:6) {
@@ -1416,6 +1336,11 @@ Insights:
 Predictability: Since there is a strong positive correlation between current and previous pickups, this suggests that the number of pickups is highly predictable based on recent data. A time series model like ARIMA or Exponential Smoothing should perform well in forecasting future pickup trends.
 Lagged Effects: The correlation across time steps indicates that demand cycles are quite smooth and continuous, with pickup numbers transitioning gradually from one time step to the next rather than fluctuating wildly.
 
+#### Dealing with outliers
+```{r outliers}
+# not sure if needed here or at all
+
+```
 
 ## Part C: Forecast for the Future
 
@@ -1423,16 +1348,7 @@ Lagged Effects: The correlation across time steps indicates that demand cycles a
 Final Data for Modeling:
 Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final training dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
 
-```{r fix_train_data_for_model}
-
-```
-
-```{r fix_test_data_for_model}
-
-```
-
 ```{r model_1_full_data}
-# קוד לאימון המודל הראשון באמצעות הנתונים המלאים
 ```
 
 ### Model 2 - Filtered Data
@@ -1442,19 +1358,9 @@ The training data includes Uber pickups within a 2000-meter radius, while the te
 2. Clustering Solution:
 Since the test data doesn't include specific locations (latitude, longitude), and the cluster based on location from the test data is not present in the training data, we need a non-location-based clustering approach.
 
-```{r fix_train_data_for_model}
-
-```
-
-```{r fix_test_data_for_model}
-
-```
-
 ```{r model_2_filtered_data}
-# קוד לאימון המודל השני באמצעות הנתונים המסוננים (מחוץ לרדיוס 2000 מטר)
 ```
 
 ## Conclusion
 ```{r conclusion}
-# סיכום הממצאים והתובנות מהמודלים
 ```

@@ -1,0 +1,15 @@
+Complaint - https://data.cityofnewyork.us/Public-Safety/NYPD-Complaint-Data-Historic/qgea-i56i/about_data
+
+Arrests - https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data-Historic-/8h9b-rp9u/about_data
+
+Shootings - https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8/about_data
+
+Collisions - https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95/about_data
+
+Weather - https://home.openweathermap.org/history_bulks/new
+
+Federal Holidays - https://www.kaggle.com/datasets/jeremygerdes/us-federal-pay-and-leave-holidays-2004-to-2100-csv?select=400_Years_of_Generated_Dates_and_Holidays.csv
+
+Events - https://data.cityofnewyork.us/City-Government/NYC-Permitted-Event-Information-Historical/bkfu-528j/about_data
+
+Yellow Taxis - https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page

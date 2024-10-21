@@ -56,27 +56,41 @@ arrests_df_1000 = arrests_df[arrests_df['distance_to_empire'] <= 1000].copy()
 arrests_df_2000A = arrests_df[arrests_df['distance_to_empire'] >= 2000].copy()  
 
 
+import pandas as pd
+
 # Create a day time range from April 1, 2014, to September 30, 2014
 time_range = pd.date_range(start='2014-04-01', end='2014-09-30', freq='1D')
 
 # Create a DataFrame for the 1-day intervals
 time_df = pd.DataFrame(time_range, columns=['arrest_date'])
 
-# Ensure 'arrest_date' in arrests_df_1000 is in datetime format
+# Ensure 'arrest_date' in both datasets is in datetime format
 arrests_df_1000['arrest_date'] = pd.to_datetime(arrests_df_1000['arrest_date'])
 arrests_df_2000A['arrest_date'] = pd.to_datetime(arrests_df_2000A['arrest_date'])
 
-# Group arrests by the 1-day intervals and count the number of occurrences
-shootings_grouped_1000 = arrests_df_1000.groupby('arrest_date').size().reset_index(name='arrests_count')
-shootings_grouped_2000A = arrests_df_2000A.groupby('arrest_date').size().reset_index(name='arrests_count')
+# Filter and group by 'arrest_date' for F (Felony) and M (Misdemeanor) categories
+# For arrests_df_1000 (within 1000 meters)
+felony_grouped_1000 = arrests_df_1000[arrests_df_1000['law_category'] == 'F'].groupby('arrest_date').size().reset_index(name='felony_count')
+misdemeanor_grouped_1000 = arrests_df_1000[arrests_df_1000['law_category'] == 'M'].groupby('arrest_date').size().reset_index(name='misdemeanor_count')
 
-# Merge the full timeline (time_df) with the grouped arrests data
-final_arrests_df_1000 = pd.merge(time_df, shootings_grouped_1000, on='arrest_date', how='left')
-final_arrests_df_2000A = pd.merge(time_df, shootings_grouped_2000A, on='arrest_date', how='left')
+# For arrests_df_2000A (beyond 2000 meters)
+felony_grouped_2000A = arrests_df_2000A[arrests_df_2000A['law_category'] == 'F'].groupby('arrest_date').size().reset_index(name='felony_count')
+misdemeanor_grouped_2000A = arrests_df_2000A[arrests_df_2000A['law_category'] == 'M'].groupby('arrest_date').size().reset_index(name='misdemeanor_count')
+
+# Merge the full timeline (time_df) with the grouped felony and misdemeanor data
+final_arrests_df_1000 = pd.merge(time_df, felony_grouped_1000, on='arrest_date', how='left')
+final_arrests_df_1000 = pd.merge(final_arrests_df_1000, misdemeanor_grouped_1000, on='arrest_date', how='left')
+
+final_arrests_df_2000A = pd.merge(time_df, felony_grouped_2000A, on='arrest_date', how='left')
+final_arrests_df_2000A = pd.merge(final_arrests_df_2000A, misdemeanor_grouped_2000A, on='arrest_date', how='left')
 
 # Fill missing values with 0 (for days where no arrests occurred)
-final_arrests_df_1000['arrests_count'] = final_arrests_df_1000['arrests_count'].fillna(0)
-final_arrests_df_2000A['arrests_count'] = final_arrests_df_2000A['arrests_count'].fillna(0)
+final_arrests_df_1000[['felony_count', 'misdemeanor_count']] = final_arrests_df_1000[['felony_count', 'misdemeanor_count']].fillna(0).astype(int)
+final_arrests_df_2000A[['felony_count', 'misdemeanor_count']] = final_arrests_df_2000A[['felony_count', 'misdemeanor_count']].fillna(0).astype(int)
+
+# Calculate the total number of arrests for each day and convert it to integer
+final_arrests_df_1000['total_arrests'] = (final_arrests_df_1000['felony_count'] + final_arrests_df_1000['misdemeanor_count']).astype(int)
+final_arrests_df_2000A['total_arrests'] = (final_arrests_df_2000A['felony_count'] + final_arrests_df_2000A['misdemeanor_count']).astype(int)
 
 
 # Save to CSV

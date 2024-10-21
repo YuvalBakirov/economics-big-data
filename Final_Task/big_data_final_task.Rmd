@@ -842,8 +842,8 @@ add_is_night  <- function(data) {
         
         # Night: 20:31 - 00:00
         (hour(time_interval) == 20 & minute(time_interval) > 30) |      
-        (hour(time_interval) > 20 & hour(time_interval) <= 23) ~ 2,
-        hour(time_interval) == 0 ~ 2
+        (hour(time_interval) > 20 & hour(time_interval) <= 23) ~ 1,
+        hour(time_interval) == 0 ~ 1
       )
     )
 }

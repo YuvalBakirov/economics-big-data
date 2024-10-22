@@ -1301,6 +1301,23 @@ How Merging This Data Can Help Final Predictions:
 arrests_1000m <- read.csv("arrests_F_and_M_1000m.csv")
 arrests_2000Am <- read.csv("arrests_F_and_M_2000Am.csv")
 ```
+To avoid reaching a state of complete multicollinearity, you can remove both felony_count and misdemeanor_count, keeping only total_arrests for your predictions. This will ensure that the model does not suffer from redundancy due to the perfect correlation between total_arrests, felony_count, and misdemeanor_count.
+```{r}
+# Function to remove 'felony_count' and 'misdemeanor_count' from the dataset
+clean_arrest_data <- function(data) {
+  # Remove 'felony_count' and 'misdemeanor_count' columns
+  data_cleaned <- data %>%
+    select(-felony_count, -misdemeanor_count)
+  
+  # Return the cleaned dataset
+  return(data_cleaned)
+}
+```
+
+```{r}
+arrests_1000m <- clean_arrest_data(arrests_1000m)
+arrests_2000Am <- clean_arrest_data(arrests_2000Am)   
+```
 
 ```{r}
 arrests_1000m
@@ -1330,7 +1347,7 @@ replicate_arrests_to_intervals <- function(arrests_data) {
     mutate(
       time_interval = as.POSIXct(time_intervals, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
     ) %>%
-    select(time_interval, felony_count, misdemeanor_count, total_arrests)
+    select(time_interval, total_arrests)
   
   return(arrests_data_15min)
 }
@@ -1515,7 +1532,7 @@ We added a lot of features, we probably won't need all of them, we'll start with
 #### Descriptive Statistics and Visualization
 Note: all the features are numeric (0/1 or a number) except for time_interval (date)
 
-We will use correlation analysis to:
+Firstly, we will use correlation analysis to:
 1. determine which features are less likely to explain or predict the number of pickups (features that have low correlation with number_of_pickups)
 2. Identify potential multicollinearity between features. Multicollinearity occurs when two or more features are highly correlated with each other. In cases of high correlation between features, one of the features can be removed to prevent redundancy and to ensure that the model does not become unstable. Reducing multicollinearity improves the interpretability of the model and ensures that the model can better distinguish the effects of different variables.
 
@@ -1588,7 +1605,6 @@ We can see that for the 1000m data:
 1. Number of Pickups:
 * Negative correlation with is_weekend (-0.35) and is_night (-0.50), meaning fewer pickups occur during weekends and nights.
 * Positive correlation with taxis_pickup_count (0.31), indicating more taxi pickups are associated with higher numbers of regular pickups.
-* Moderate correlation with misdemeanor_count (0.27) and total_arrests (0.30), which could suggest that increased law enforcement activity might correlate with more pickups in the area.
 
 2. Weather Factors:
 * Temperature has a strong positive correlation with feels_like (0.99) as expected, but also has a negative correlation with clouds_all (-0.30) and is_raining_last_hour (-0.25). This suggests that higher temperatures are typically associated with fewer clouds and less rain.
@@ -1597,23 +1613,18 @@ We can see that for the 1000m data:
 3. Event Count:
 * A moderate positive correlation is seen between event_count and temp (0.24) and feels_like (0.23), suggesting that events might tend to occur during warmer weather.
 
-4. Law Enforcement:
-* Felony Count is strongly positively correlated with total_arrests (0.56), which is expected as felony counts would contribute to overall arrests.
-* Misdemeanor Count has a very strong positive correlation with total_arrests (0.96), indicating that misdemeanors make up a significant portion of arrests.
-
-5. Handling Missing Values (NAs):
-* Number of persons killed and is snowing last hour both show a large number of missing values (NAs). This likely means that there were no instances of these events occurring in the dataset, which would lead to the absence of correlations. These features are therefore not expected to explain or predict the number of pickups due to their lack of variation in the data.
+4. Handling Missing Values (NAs):
+* Number of persons killed and is snowing last hour both show a large number of missing values (NAs).
+We will deal with it later.
 
 
 Conclusions:
 1. Determining Less Relevant Features for Predicting Number of Pickups: Features that have low correlation with number_of_pickups are less likely to be useful for predicting the number of pickups. Based on the data, these include:
 * Wind_speed (-0.02): The correlation is very close to zero, suggesting wind speed has minimal impact on the number of pickups.
 * Memorial_day (-0.08), Independence_day (-0.09), and Labor_day (-0.05): These holiday variables have weak correlations with the number of pickups and likely do not have a strong impact on pickup activity.
-* Felony_count (0.23) and Misdemeanor_count (0.27): While there is some correlation, it is not particularly strong, meaning that law enforcement activity may not be a primary factor in predicting pickups.
 
 2. Identifying Potential Multicollinearity: There are several instances of high correlation between features that indicate potential multicollinearity:
 * Temperature and feels_like (0.99): These variables are almost perfectly correlated, indicating strong multicollinearity. Since these variables essentially represent the same information, one of them (likely feels_like) can be removed from a predictive model to prevent redundancy.
-* Misdemeanor_count and total_arrests (0.96): These variables are also highly correlated, indicating that misdemeanors contribute substantially to total arrests. Including both in a model could cause instability, so one of these variables (e.g., misdemeanor_count) could be removed to reduce multicollinearity.
 * Humidity and is_raining_last_hour (0.56): Higher humidity is associated with recent rainfall. While not as high as other correlations, this could also indicate some redundancy in the information provided by these two variables.
 
 ```{r}
@@ -1628,7 +1639,7 @@ print_corr_pairs(train_filtered_2000m_data, "2000m Data")
 
 We can see that for the 2000m data:
 1. Number of Pickups:
-* Negative correlation with is_night (-0.33) suggests fewer pickups occur during nighttime, although less strongly than in the 1000m data.
+* Negative correlation with is_night (-0.33) suggests fewer pickups occur during nighttime.
 * Positive correlation with taxis_pickup_count (0.47), indicating that higher taxi pickups are strongly associated with regular pickups.
 * Moderate positive correlations with event_count (0.37) and number_of_crashes (0.37), suggesting that events and traffic incidents might be associated with higher numbers of pickups.
 
@@ -1641,24 +1652,17 @@ We can see that for the 2000m data:
 * Moderate positive correlation with temp (0.25) and feels_like (0.24), indicating that events tend to occur in warmer weather.
 * Moderate positive correlation with number_of_crashes (0.26) suggests that events are potentially associated with traffic incidents, possibly due to congestion.
 
-4. Law Enforcement:
-* Felony Count has a strong positive correlation with total_arrests (0.92) and misdemeanor_count (0.82), indicating that both felony and misdemeanor offenses contribute significantly to total arrests.
-* Misdemeanor Count has an extremely high positive correlation with total_arrests (0.98), showing that misdemeanors make up the bulk of arrests.
-
-5. Handling Missing Values (NAs):
-* Similar to the 1000m data, features like number_of_persons_killed and is_snowing_last_hour have many missing values (NAs), indicating that these events were either rare or absent in the dataset, making them less likely to contribute meaningfully to predicting pickups.
-
+4. Handling Missing Values (NAs):
+* Similar to the 1000m data, features like number_of_persons_killed and is_snowing_last_hour have many missing values (NAs).
+We will deal with it later.
 
 Conclusions:
 1. Determining Less Relevant Features for Predicting Number of Pickups: Based on the 2000m data, the following features have low correlation with number_of_pickups and are less likely to be important predictors:
 * Wind_speed (-0.03): Very low correlation with pickups, suggesting it has minimal impact on pickup activity.
 * Memorial_day (-0.08), Independence_day (-0.05), and Labor_day (-0.01): These holidays show weak correlations and likely do not have a strong effect on pickup numbers.
-* Felony_count (0.13) and Misdemeanor_count (0.18): These law enforcement variables have moderate but not particularly strong correlations with pickups, suggesting they may not be key predictors.
 
 2. Identifying Potential Multicollinearity: Several features exhibit high correlation, indicating potential multicollinearity:
 * Temperature and feels_like (0.99): Almost perfect correlation, indicating redundancy. Removing one of these (e.g., feels_like) would help reduce multicollinearity.
-* Misdemeanor_count and total_arrests (0.98): Since misdemeanors dominate total arrests, it may be redundant to include both in the model. Removing one of these features would simplify the model.
-* Felony_count and total_arrests (0.92): Similarly, felonies also contribute significantly to total arrests, and removing one of these features could improve model stability.
 * Humidity and clouds_all (0.61): This moderate correlation suggests some redundancy in these atmospheric variables, and removing one could improve interpretability without significant information loss.
 
 
@@ -1714,12 +1718,43 @@ check_constant_or_na(train_filtered_1000m_data, "number_of_persons_killed", "tra
 We observed that all values for the 'number_of_persons_killed' feature in the 1000m datasets are constant (0).
 Therefore, We will omit this variable later in 1000m data.
 
+Since all the values in the 1000m data for the feature: 'number_of_persons_killed' are 0, we would like to check its behavior in the 2000m data:
+
+```{r}
+# Define a function to count and visualize the occurrences for 'number_of_persons_killed'
+plot_persons_killed_distribution <- function(data, dataset_name) {
+  # Create a table of counts for 'number_of_persons_killed'
+  counts <- as.data.frame(table(data$number_of_persons_killed))
+  
+  # Create a bar plot to visualize the distribution
+  ggplot(counts, aes(x = Var1, y = Freq)) +
+    geom_bar(stat = "identity", fill = "blue", color = "black") +
+    labs(
+      title = paste("Distribution of 'number_of_persons_killed' -", dataset_name),
+      x = "Number of Persons Killed",
+      y = "Count"
+    ) +
+    theme_minimal()
+}
+
+# Call the function for train_filtered_1000m_data
+plot_persons_killed_distribution(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data
+plot_persons_killed_distribution(train_filtered_2000m_data, "train_filtered_2000m_data")
+```
+As you can see, the number of person killed is very negligible in both tables. In the 1000 meter radius table, there are no persons killed at all from April to mid-September, therefore it is very likely that there will be no persons killed until the end of September.
+Negligible in the 2000 meter radius table.
+In addition, the correlation with the label "number_of_pickups" we calculated earlier for the 2000 table was also very negligible (0.014).
+In conclusion, we will remove this feature.
+
+
 TODO - FIX FOR ALL FEATURES:
 Now, another check, for multicollinearity among features. If some features are highly correlated with each other, we might want to drop one of them to avoid redundancy. This is done using the Variance Inflation Factor (VIF):
 
 ```{r}
 # Fit a linear model to calculate VIF
-model <- lm(number_of_pickups ~ temp + humidity + wind_speed + feels_like + clouds_all + is_raining_last_hour + is_night + is_weekend, data = train_filtered_1000m_data)
+model <- lm(number_of_pickups ~ temp + humidity + wind_speed + feels_like + clouds_all + is_raining_last_hour + is_night + is_weekend+ number_of_persons_injured+ number_of_crashes+ event_count+ taxis_pickup_count+ total_arrests+ memorial_day+ independence_day+labor_day , data = train_filtered_1000m_data)
 
 # Calculate VIF
 vif_values <- vif(model)
@@ -1727,6 +1762,46 @@ print(vif_values)
 
 # Drop features with VIF > 5 (indicative of multicollinearity)
 ```
+
+```{r}
+# Define a function to fit the linear model and calculate VIF
+calculate_vif <- function(data, dataset_name) {
+  # Fit a linear model to calculate VIF
+  model <- lm(number_of_pickups ~ temp + humidity + wind_speed + feels_like + clouds_all + 
+              is_raining_last_hour + is_night + is_weekend + number_of_persons_injured + 
+              number_of_crashes + event_count + taxis_pickup_count + total_arrests + 
+              memorial_day + independence_day + labor_day, data = data)
+  
+  # Calculate VIF
+  vif_values <- vif(model)
+  
+  # Print the VIF values
+  print(paste("VIF values for", dataset_name))
+  print(vif_values)
+  
+  # Check for variables with VIF > 5
+  high_vif <- vif_values[vif_values > 5]
+  
+  if (length(high_vif) > 0) {
+    print(paste("Features with VIF > 5 for", dataset_name))
+    print(high_vif)
+  } else {
+    print(paste("No features with VIF > 5 for", dataset_name))
+  }
+}
+
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+calculate_vif(train_filtered_1000m_data, "train_filtered_1000m_data")
+```
+```{r}
+# Call the function for train_filtered_2000m_data
+calculate_vif(train_filtered_2000m_data, "train_filtered_2000m_data")
+```
+
+todo explain for both datasets and change numbers
 
 It looks like you have a very high Variance Inflation Factor (VIF) for both temp (116.32) and feels_like (113.91), which suggests strong multicollinearity between these two variables. This is consistent with the high correlation (almost 1) between temp and feels_like that we observed earlier.
 
@@ -1736,38 +1811,6 @@ Drop one of the highly collinear features: In this case, since temp and feels_li
 Summary:
 We performed 2 tests, a correlation test and a multicollinearity test (VIF) and decided that the feature "feels_like" will be removed.
 Also, we removed "is_snowing_last_hour" since it has only one value = 0. There was no snow and it is not expected to snow during the time period we are forecasting (explained earlier).
-
-
-Removing Features:
-```{r}
-# Define a function to remove specific columns from a dataset
-remove_columns <- function(data, columns_to_remove) {
-  # Remove the specified columns from the dataset
-  data <- data[, !names(data) %in% columns_to_remove]
-  return(data)
-}
-
-# Columns to be removed
-columns_to_remove <- c("feels_like", "is_snowing_last_hour")
-
-# Remove the columns from train_filtered_1000m_data
-train_filtered_1000m_data <- remove_columns(train_filtered_1000m_data, columns_to_remove)
-
-# Remove the columns from train_filtered_2000m_data
-train_filtered_2000m_data <- remove_columns(train_filtered_2000m_data, columns_to_remove)
-
-# Remove the columns from test_fixed_data
-test_fixed_data <- remove_columns(test_fixed_data, columns_to_remove)
-
-# Printing col names:
-print(colnames(train_filtered_1000m_data))
-cat("\n")
-print(colnames(train_filtered_2000m_data))
-cat("\n")
-print(colnames(test_fixed_data))
-
-
-```
 
 About the features we imported from the empire-state-weather-2014.csv:
 
@@ -1787,10 +1830,17 @@ By focusing on temperature and rain, we are capturing the two most significant e
 
 This logical reduction simplifies our model, allowing us to focus on the most influential features without losing explanatory power.
 
-
+Removing Features:
 ```{r}
+# Define a function to remove specific columns from a dataset
+remove_columns <- function(data, columns_to_remove) {
+  # Remove the specified columns from the dataset
+  data <- data[, !names(data) %in% columns_to_remove]
+  return(data)
+}
+
 # Columns to be removed
-columns_to_remove <- c("clouds_all", "wind_speed", "humidity")
+columns_to_remove <- c("feels_like", "is_snowing_last_hour", "number_of_persons_killed", "humidity", "clouds_all", "wind_speed")
 
 # Remove the columns from train_filtered_1000m_data
 train_filtered_1000m_data <- remove_columns(train_filtered_1000m_data, columns_to_remove)
@@ -1801,14 +1851,22 @@ train_filtered_2000m_data <- remove_columns(train_filtered_2000m_data, columns_t
 # Remove the columns from test_fixed_data
 test_fixed_data <- remove_columns(test_fixed_data, columns_to_remove)
 
-# Printing col names:
-print(colnames(train_filtered_1000m_data))
-cat("\n")
-print(colnames(train_filtered_2000m_data))
-cat("\n")
-print(colnames(test_fixed_data))
-
 ```
+```{r}
+# Printing col names:
+cat("1000 meter data columns:\n")
+print(colnames(train_filtered_1000m_data))
+```
+
+```{r}
+cat("2000 meter data columns:\n")
+print(colnames(train_filtered_2000m_data))
+```
+```{r}
+cat("test data columns:\n")
+print(colnames(test_fixed_data))
+```
+
 
 Great!
 Now, Lets do some visualizations to understand how the variables behave:

@@ -1968,11 +1968,11 @@ Observations from the 2000m Data:
 * There is a wider range of pickups in this dataset, with instances reaching up to 400 pickups, implying a more diverse set of demand situations at this larger distance from the Empire State Building.
 
 ------------
-
+TODO - what is autocorrelation in time series??
 
 ------------
 
-# TODO - FIX FROM DOWN HERE:
+#### TODO - FIX FROM DOWN HERE:
 2. Number of Pickups vs. Temperature
 Temperature has a strong impact on people's decision to use Uber, especially during extreme weather conditions.
 ```{r}
@@ -2205,6 +2205,40 @@ for (i in 1:6) {
 Conclusion:
 This analysis suggests that Uber demand in the area has a strong short-term dependency. Predicting future pickups based on past data would likely benefit from using recent time intervals (within the last 30 minutes) rather than older data. As the time lag increases, past data becomes less useful for making predictions.
 
+#### TODO - FIX FROM UP HERE:
+
+#### Preprocessing Steps
+
+##### Spliting the data
+By splitting the data into training and validation sets, we can train our model on the training set and assess its performance on the validation set. This helps us understand how well our model is likely to perform on new, unseen data. Additionally, inorder to avoid data leaking, and understanding that onehotencoder is based on fitting and transforming, from now on will work with test_train split.
+
+Since our project is based on time intervals (time series), it is essential to respect the chronological order of the data. Our training data spans 6 months, *TODO decide on a correct test_train split*
+
+```{r}
+range(train_filtered_1000m_data$time_interval)
+```
+
+```{r}
+range(train_filtered_2000m_data$time_interval)
+```
+```{r split to val and train}
+
+```
+
+
+##### Outlier Handling
+Outliers should be detected and handled based solely on the training data. This avoids influencing the validation data and ensures that the validation set remains unbiased.
+
+```{r}
+
+```
+
+##### Normalization
+Why normalize: when will use Non-tree based algorithms, especially K-NN, normalization will play a big role, since calculation either distance / any type of effect (values increasing / deacreasing) we would like to have all the features have the same "size".
+
+```{r}
+
+```
 
 ## Part C: Forecast for the Future
 

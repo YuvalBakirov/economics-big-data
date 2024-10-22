@@ -16,12 +16,14 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyr)
 library(dplyr)
 library(geosphere) 
-library(leaflet)
+# library(leaflet)
 library(ggplot2)
 library(lubridate)
 library(readr)
 library(stringr)
 library(corrplot)
+library(car)
+
 ```
 
 ## Load the CSV files
@@ -1473,7 +1475,7 @@ To determine which features are less likely to explain or predict the number of 
 #### Descriptive Statistics and Visualization
 ```{r descriptive_statistics}
 # Define a function for correlation analysis and visualization
-analyze_correlation <- function(data) {
+analyze_correlation <- function(data, dataset_name) {
   # Select the relevant columns for correlation analysis
   numeric_features <- data[, c("number_of_pickups", "temp", "humidity", "wind_speed", 
                                "feels_like", "clouds_all")]
@@ -1485,14 +1487,15 @@ analyze_correlation <- function(data) {
   print(cor_matrix)
   
   # Visualize the correlation matrix
-  corrplot(cor_matrix, method = "circle")
+  corrplot(cor_matrix, method = "circle", title = paste("Correlation Matrix -", dataset_name), 
+           mar = c(0, 0, 2, 0))  # Adding title with mar for top margin
 }
 
 # Call the function for train_filtered_1000m_data
-analyze_correlation(train_filtered_1000m_data)
+analyze_correlation(train_filtered_1000m_data, "train_filtered_1000m_data")
 
 # Call the function for train_filtered_2000m_data
-analyze_correlation(train_filtered_2000m_data)
+analyze_correlation(train_filtered_2000m_data, "train_filtered_2000m_data")
 
 ```
 As you can see, indeed as we expected, temperature and feels like very coordinated (0.9926).
@@ -1576,12 +1579,10 @@ cor_matrix <- cor(numeric_features, use = "complete.obs")
 print(cor_matrix)
 ```
 Great - We will omit this variable later.
+
 Now, another check, for multicollinearity among features. If some features are highly correlated with each other, we might want to drop one of them to avoid redundancy. This is done using the Variance Inflation Factor (VIF):
 
 ```{r}
-# Load necessary libraries
-library(car)
-
 # Fit a linear model to calculate VIF
 model <- lm(number_of_pickups ~ temp + humidity + wind_speed + feels_like + clouds_all + is_raining_last_hour + is_night + is_weekend, data = train_filtered_1000m_data)
 
@@ -1620,10 +1621,16 @@ train_filtered_1000m_data <- remove_columns(train_filtered_1000m_data, columns_t
 # Remove the columns from train_filtered_2000m_data
 train_filtered_2000m_data <- remove_columns(train_filtered_2000m_data, columns_to_remove)
 
+# Remove the columns from test_fixed_data
+test_fixed_data <- remove_columns(test_fixed_data, columns_to_remove)
+
 # Printing col names:
 print(colnames(train_filtered_1000m_data))
 cat("\n")
 print(colnames(train_filtered_2000m_data))
+cat("\n")
+print(colnames(test_fixed_data))
+
 
 ```
 
@@ -1645,6 +1652,29 @@ By focusing on temperature and rain, we are capturing the two most significant e
 
 This logical reduction simplifies our model, allowing us to focus on the most influential features without losing explanatory power.
 
+
+```{r}
+# Columns to be removed
+columns_to_remove <- c("clouds_all", "wind_speed", "humidity")
+
+# Remove the columns from train_filtered_1000m_data
+train_filtered_1000m_data <- remove_columns(train_filtered_1000m_data, columns_to_remove)
+
+# Remove the columns from train_filtered_2000m_data
+train_filtered_2000m_data <- remove_columns(train_filtered_2000m_data, columns_to_remove)
+
+# Remove the columns from test_fixed_data
+test_fixed_data <- remove_columns(test_fixed_data, columns_to_remove)
+
+# Printing col names:
+print(colnames(train_filtered_1000m_data))
+cat("\n")
+print(colnames(train_filtered_2000m_data))
+cat("\n")
+print(colnames(test_fixed_data))
+
+```
+
 Great!
 Now, Lets do some visualizations to understand how the variables behave:
 ```{r}
@@ -1656,15 +1686,15 @@ Summary of Descriptive Statistics:
 1. train_filtered_1000m_data
 Number of Pickups: Ranges from 1 to 190, with a mean of 44.5, suggesting moderate demand overall.
 Temperature: Ranges from 4.24°C to 33.19°C, with a mean of 22.43°C. This indicates the dataset covers a broad range of temperatures from cool to hot.
-Humidity: Varies from 13% to 94%, with an average of 52.15%, suggesting a mix of dry and humid conditions.
-Wind Speed: Ranges from 0.51 to 14.92 m/s, with a mean of 5.56 m/s, indicating a range from calm to breezy days.
-Cloud Cover: Varies from 0% to 100%, with an average of 39.8%, indicating frequent clear to partly cloudy days.
+
 Is Raining: Rain occurred in ~16% of the intervals, as shown by the mean value of 0.1594.
+
 
 2. train_filtered_2000m_data
 Number of Pickups: Ranges from 9 to 204, with a higher average of 132, indicating higher demand compared to the 1000m dataset.
-Temperature, Humidity, Wind Speed, Cloud Cover: The ranges and averages for these features are nearly identical to the 1000m dataset, reflecting similar environmental conditions.
+Temperature: The ranges and averages for this feature are nearly identical to the 1000m dataset, reflecting similar environmental conditions.
 Is Raining: Rain occurred in ~16% of the intervals, similar to the 1000m dataset.
+
 Conclusion:
 The 2000m dataset shows higher pickup demand on average compared to the 1000m dataset.
 Both datasets have similar weather conditions and rain occurrence - makes sense because both datasets are in more or less the same area in New York.
@@ -1738,6 +1768,7 @@ plot_temp_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
 plot_temp_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
 
 ```
+todo fix explanations and graph
 train_filtered_1000m_data:
 Spread of Data: The points are widely scattered, indicating that temperature alone does not have a strong, clear impact on the number of pickups. There is significant variation in the number of pickups across all temperature ranges.
 
@@ -1786,6 +1817,7 @@ plot_rain_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
 # Call the function for train_filtered_2000m_data_cleaned
 plot_rain_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
 ```
+todo fix explanations
 train_filtered_1000m_data:
 Rain Effect:
 When it rains (1), the median number of pickups is higher compared to when it does not rain (0). This suggests that rain generally increases the demand for Uber rides.
@@ -1912,7 +1944,7 @@ Some time series visualizations:
 ```{r}
 # Define a function to plot time series of pickups over time
 plot_time_series_pickups <- function(data, dataset_name) {
-  ggplot(data, aes(x = rounded_timestamp, y = number_of_pickups, group = 1)) +
+  ggplot(data, aes(x = time_interval, y = number_of_pickups, group = 1)) +
     geom_line(color = "blue", size = 1) +
     labs(
       title = paste("Time Series of Pickups Throughout the Day -", dataset_name),

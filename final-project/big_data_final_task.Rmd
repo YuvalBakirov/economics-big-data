@@ -16,14 +16,15 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyr)
 library(dplyr)
 library(geosphere) 
-# library(leaflet)
+library(leaflet)
 library(ggplot2)
 library(lubridate)
 library(readr)
 library(stringr)
 library(corrplot)
 library(car)
-
+library(gridExtra) #install.packages("gridExtra")
+library(grid)
 ```
 
 ## Load the CSV files
@@ -1525,23 +1526,38 @@ Filtered Data: Data was filtered based on distance from the Empire State Buildin
 1. train_raw_data which is now called train_filtered_1000m_data table which has only data about pickups which was occurred up to 1000m radius from the Empire State Building.
 2. The train_filtered_2000m_data includes pickups from over 2000 meters away from the Empire State Building. 
 
-New Variables: The dataset includes the columns: time_interval, number_of_pickups,	is_weekend, is_night, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour, number_of_persons_injured, number_of_persons_killed, number_of_crashes, event_count, taxis_pickup_count, felony_count, misdemeanor_count, total_arrests, memorial_day, independence_day, labor_day  
+New Variables: The dataset includes the columns: time_interval, number_of_pickups,	is_weekend, is_night, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour, number_of_persons_injured, number_of_persons_killed, number_of_crashes, event_count, taxis_pickup_count, total_arrests, memorial_day, independence_day, labor_day  
 
 We added a lot of features, we probably won't need all of them, we'll start with dry logic and then move on to tests and observations.
 
-#### Descriptive Statistics and Visualization
-Note: all the features are numeric (0/1 or a number) except for time_interval (date)
+```{r}
+numerical_features <- c(
+  "number_of_pickups", "temp", "humidity", "wind_speed", "feels_like", 
+  "clouds_all", "number_of_persons_injured", "number_of_persons_killed", 
+  "number_of_crashes", "event_count", "taxis_pickup_count", "total_arrests"
+)
 
+numerical_features
+```
+```{r}
+categorical_features <- c("is_weekend", "is_night", "is_raining_last_hour", "is_snowing_last_hour", 
+                         "memorial_day", "independence_day", "labor_day")
+categorical_features
+```
+
+
+#### Looking At The Features 
 Firstly, we will use correlation analysis to:
 1. determine which features are less likely to explain or predict the number of pickups (features that have low correlation with number_of_pickups)
 2. Identify potential multicollinearity between features. Multicollinearity occurs when two or more features are highly correlated with each other. In cases of high correlation between features, one of the features can be removed to prevent redundancy and to ensure that the model does not become unstable. Reducing multicollinearity improves the interpretability of the model and ensures that the model can better distinguish the effects of different variables.
 
+
 ```{r}
 # Function for correlation analysis and visualization
-create_corr_matrix <- function(data, dataset_name) {
-  # Select all numeric columns, excluding 'time_interval'
+create_corr_matrix <- function(data, dataset_name, numerical_features) {
+  # Select only the numerical columns specified in the numerical_features list
   numeric_data <- data %>%
-    select_if(is.numeric)  # Select numeric columns, exclude non-numeric ones
+    select(all_of(numerical_features))  # Select specified numerical columns
 
   # Calculate correlation matrix using 'pairwise.complete.obs' to handle missing values
   cor_matrix <- cor(numeric_data, use = "pairwise.complete.obs", method = "pearson")
@@ -1556,6 +1572,7 @@ create_corr_matrix <- function(data, dataset_name) {
   corrplot(cor_matrix, method = "color", col = col(200),  
            type = "full", order = "original", # Display both triangles
            tl.col = "black", tl.srt = 45, # Text label color and rotation
+           addCoef.col = "black",
            tl.cex = 0.7, # Reduce text label size for better readability
            number.cex = 0.5, # Adjust coefficient number size
            na.label = "NA", # Handle NA values in the correlation plot
@@ -1566,112 +1583,54 @@ create_corr_matrix <- function(data, dataset_name) {
 ```
 
 ```{r}
-# Function to print feature pairs and their correlation values
-print_corr_pairs <- function(data, dataset_name) {
-  # Select all numeric columns
-  numeric_data <- data %>%
-    select_if(is.numeric)  # Select numeric columns, exclude non-numeric ones
-
-  # Calculate correlation matrix
-  cor_matrix <- cor(numeric_data, use = "pairwise.complete.obs", method = "pearson")
-  
-  # Replace NaNs or Inf values with NA
-  cor_matrix[is.na(cor_matrix)] <- NA
-  
-  # Print all feature pairs with their correlation
-  feature_names <- colnames(cor_matrix)
-  cat("Correlation Pairs for", dataset_name, ":\n")
-  for (i in 1:(ncol(cor_matrix) - 1)) {
-    cat("Correlation with:", feature_names[i], ":\n")
-    for (j in (i + 1):ncol(cor_matrix)) {
-      cat(paste(feature_names[i], "and", feature_names[j], ":", cor_matrix[i, j], "\n"))
-    }
-    cat("\n")
-  }
-}
-```
-
-```{r}
 # plot corr mat for train_filtered_1000m_data:
-create_corr_matrix(train_filtered_1000m_data, "1000m Data")
-```
-```{r}
-# print feature pairs and their correlation for train_filtered_1000m_data:
-
-print_corr_pairs(train_filtered_1000m_data, "1000m Data")
+create_corr_matrix(train_filtered_1000m_data, "1000m Data", numerical_features)
 ```
 
-We can see that for the 1000m data:
-1. Number of Pickups:
-* Negative correlation with is_weekend (-0.35) and is_night (-0.50), meaning fewer pickups occur during weekends and nights.
-* Positive correlation with taxis_pickup_count (0.31), indicating more taxi pickups are associated with higher numbers of regular pickups.
+Insights from the Correlation Matrix (1000m Data):
+1. High Correlation Between Features (Potential Multicollinearity):
+* temp and Feels_like (0.99): This strong correlation suggests redundancy. We will consider dropping one, likely feels_like, to reduce multicollinearity.
+* Clouds_all and Humidity (0.61): There's moderate correlation, indicating overlap in information. This may require further investigation but isn't critical.
 
-2. Weather Factors:
-* Temperature has a strong positive correlation with feels_like (0.99) as expected, but also has a negative correlation with clouds_all (-0.30) and is_raining_last_hour (-0.25). This suggests that higher temperatures are typically associated with fewer clouds and less rain.
-* Humidity has a strong positive correlation with clouds_all (0.61) and is_raining_last_hour (0.56), indicating that higher humidity levels are associated with cloudier and rainier conditions.
+2. Correlation with number_of_pickups:
+* Positive Correlation:
+- Taxis_pickup_count (0.31) and Total_arrests (0.30) both show moderate positive correlations with Uber pickups, suggesting a link between higher transportation demand and arrest activity.
+* Negative Correlation:
+- Is_night (-0.50) and Is_weekend (-0.35) show significant drops in pickups during these times, signaling lower demand at night and on weekends.
+* Low Correlation:
+- Wind_speed (-0.02) and Number_of_persons_injured (0.03) have very low correlations with pickups, suggesting that these features have little impact on Uber demand. These may not be useful predictors in the model.
 
-3. Event Count:
-* A moderate positive correlation is seen between event_count and temp (0.24) and feels_like (0.23), suggesting that events might tend to occur during warmer weather.
+3. Handling Missing Values (NAs):
+* number_of_persons_killed shows missing values (NAs). We will address these missing values late.
 
-4. Handling Missing Values (NAs):
-* Number of persons killed and is snowing last hour both show a large number of missing values (NAs).
-We will deal with it later.
-
-
-Conclusions:
-1. Determining Less Relevant Features for Predicting Number of Pickups: Features that have low correlation with number_of_pickups are less likely to be useful for predicting the number of pickups. Based on the data, these include:
-* Wind_speed (-0.02): The correlation is very close to zero, suggesting wind speed has minimal impact on the number of pickups.
-* Memorial_day (-0.08), Independence_day (-0.09), and Labor_day (-0.05): These holiday variables have weak correlations with the number of pickups and likely do not have a strong impact on pickup activity.
-
-2. Identifying Potential Multicollinearity: There are several instances of high correlation between features that indicate potential multicollinearity:
-* Temperature and feels_like (0.99): These variables are almost perfectly correlated, indicating strong multicollinearity. Since these variables essentially represent the same information, one of them (likely feels_like) can be removed from a predictive model to prevent redundancy.
-* Humidity and is_raining_last_hour (0.56): Higher humidity is associated with recent rainfall. While not as high as other correlations, this could also indicate some redundancy in the information provided by these two variables.
+4. Key Takeaways: We will focus on reducing redundancy by addressing multicollinearity, especially between temp and feels_like. Features like taxi pickups and total arrests seem to influence Uber demand, while nighttime and weekends are associated with reduced activity. Low correlation features like wind speed and number of persons injured may have little predictive power and can potentially be excluded from the model.
 
 ```{r}
 # plot corr mat for train_filtered_2000m_data:
-create_corr_matrix(train_filtered_2000m_data, "2000m Data")
+create_corr_matrix(train_filtered_2000m_data, "2000m Data", numerical_features)
 ```
 
-```{r}
-# print feature pairs and their correlation for train_filtered_1000m_data:
-print_corr_pairs(train_filtered_2000m_data, "2000m Data")
-```
+Insights from the Correlation Matrix (2000m Data):
+1. High Correlation Between Features (Potential Multicollinearity):
+* temp and Feels_like (0.99): This nearly perfect correlation suggests redundancy. We will likely drop feels_like to avoid multicollinearity.
+Clouds_all and Humidity (0.61): This moderate correlation indicates some overlap in information, though it is less critical.
 
-We can see that for the 2000m data:
-1. Number of Pickups:
-* Negative correlation with is_night (-0.33) suggests fewer pickups occur during nighttime.
-* Positive correlation with taxis_pickup_count (0.47), indicating that higher taxi pickups are strongly associated with regular pickups.
-* Moderate positive correlations with event_count (0.37) and number_of_crashes (0.37), suggesting that events and traffic incidents might be associated with higher numbers of pickups.
+2. Correlation with number_of_pickups:
+* Positive Correlation:
+- Taxis_pickup_count (0.47) and Total_arrests (0.17) show moderate correlations, suggesting that both higher transportation demand (taxi activity) and arrest activity are associated with an increase in Uber pickups.
+- Event_count (0.37) and Number_of_crashes (0.37): Events and traffic incidents appear linked to increased demand for Uber pickups, likely due to congestion or disrupted transportation routes.
+* Low Correlation:
+- Wind_speed (-0.03) and Number_of_persons_killed (0.01) exhibit very weak correlations with pickups, suggesting little to no impact on Uber demand. These features may not be useful predictors.
 
-2. Weather Factors:
-* Temperature has a strong positive correlation with feels_like (0.99) as expected, but a negative correlation with clouds_all (-0.31) and 
-* is_raining_last_hour (-0.25). This indicates that warmer weather typically corresponds with fewer clouds and less rain.
-* Humidity has a strong positive correlation with clouds_all (0.61) and is_raining_last_hour (0.56), showing a relationship between higher humidity and cloudier or rainier conditions, similar to the 1000m data.
+3. Key Takeaways: We will prioritize reducing multicollinearity by addressing the strong correlation between temp and feels_like. Features like taxi pickups, total arrests, event count, and number of crashes seem to have a clear relationship with Uber demand, making them important predictors. Conversely, low correlation features like wind speed and number of persons killed may not significantly contribute to the model and could be excluded to simplify the analysis.
 
-3. Event Count:
-* Moderate positive correlation with temp (0.25) and feels_like (0.24), indicating that events tend to occur in warmer weather.
-* Moderate positive correlation with number_of_crashes (0.26) suggests that events are potentially associated with traffic incidents, possibly due to congestion.
-
-4. Handling Missing Values (NAs):
-* Similar to the 1000m data, features like number_of_persons_killed and is_snowing_last_hour have many missing values (NAs).
-We will deal with it later.
-
-Conclusions:
-1. Determining Less Relevant Features for Predicting Number of Pickups: Based on the 2000m data, the following features have low correlation with number_of_pickups and are less likely to be important predictors:
-* Wind_speed (-0.03): Very low correlation with pickups, suggesting it has minimal impact on pickup activity.
-* Memorial_day (-0.08), Independence_day (-0.05), and Labor_day (-0.01): These holidays show weak correlations and likely do not have a strong effect on pickup numbers.
-
-2. Identifying Potential Multicollinearity: Several features exhibit high correlation, indicating potential multicollinearity:
-* Temperature and feels_like (0.99): Almost perfect correlation, indicating redundancy. Removing one of these (e.g., feels_like) would help reduce multicollinearity.
-* Humidity and clouds_all (0.61): This moderate correlation suggests some redundancy in these atmospheric variables, and removing one could improve interpretability without significant information loss.
-
-
+---------------
 What about NAs:
-The NA values in the is_snowing_last_hour & number_of_persons_killed of the correlation matrix occur because the is_snowing_last_hour & number_of_persons_killed feature likely contains only a constant value (like all zeros), resulting in a standard deviation of zero. Correlation cannot be computed if there is no variability in the data, which leads to NA in the correlation matrix.
+The NA values in the number_of_persons_killed of the correlation matrix occur because the this feature likely contains only a constant value (like all zeros), resulting in a standard deviation of zero. Correlation cannot be computed if there is no variability in the data, which leads to NA in the correlation matrix.
 
 Why This Happens:
 Zero Variance: If a feature contains only a single value for all rows (e.g., all zeros or all NAs), its standard deviation is zero. Since correlation measures the co-movement of two variables, the absence of variability makes it impossible to compute correlation.
-Constant Feature: If all values in is_snowing_last_hour & number_of_persons_killed are NA, R cannot compute a correlation, resulting in NA in the correlation matrix.
+Constant Feature: If all values in number_of_persons_killed are NA, R cannot compute a correlation, resulting in NA in the correlation matrix.
 We checked NA's - The first option sounds reasonable, let's check:
 ```{r}
 # Define a function to check if a column has constant or NA values, and print the dataset name
@@ -1694,21 +1653,6 @@ check_constant_or_na <- function(data, column_name, dataset_name) {
 }
 ```
 
-is_snowing_last_hour (this is for both 1000m & 2000m datasets):
-```{r}
-# Call the function for 'is_snowing_last_hour' in train_filtered_1000m_data
-check_constant_or_na(train_filtered_1000m_data, "is_snowing_last_hour", "train_filtered_1000m_data")
-```
-
-```{r}
-# Call the function for 'is_snowing_last_hour' in train_filtered_2000m_data
-check_constant_or_na(train_filtered_2000m_data, "is_snowing_last_hour", "train_filtered_2000m_data")
-```
-We observed that all values for the 'is_snowing_last_hour' feature in both the 1000m and 2000m datasets are constant (0).
-This makes sense given that the months in the data (April to September) are not snowy months in New York City. 
-Typically, snow occurs in the winter months of January and February, so it is reasonable to see no snow-related data during the spring and summer months covered by the dataset.
-Therefore, We will omit this variable later for both datasets.
-
 number_of_persons_killed (this is for only 1000m dataset):
 ```{r}
 # Call the function for 'number_of_persons_killed' in train_filtered_1000m_data
@@ -1719,7 +1663,6 @@ We observed that all values for the 'number_of_persons_killed' feature in the 10
 Therefore, We will omit this variable later in 1000m data.
 
 Since all the values in the 1000m data for the feature: 'number_of_persons_killed' are 0, we would like to check its behavior in the 2000m data:
-
 ```{r}
 # Define a function to count and visualize the occurrences for 'number_of_persons_killed'
 plot_persons_killed_distribution <- function(data, dataset_name) {
@@ -1736,41 +1679,145 @@ plot_persons_killed_distribution <- function(data, dataset_name) {
     ) +
     theme_minimal()
 }
+```
 
+```{r}
 # Call the function for train_filtered_1000m_data
 plot_persons_killed_distribution(train_filtered_1000m_data, "train_filtered_1000m_data")
-
+```
+```{r}
 # Call the function for train_filtered_2000m_data
 plot_persons_killed_distribution(train_filtered_2000m_data, "train_filtered_2000m_data")
 ```
-As you can see, the number of person killed is very negligible in both tables. In the 1000 meter radius table, there are no persons killed at all from April to mid-September, therefore it is very likely that there will be no persons killed until the end of September.
+
+We can see that the "number_of_persons_killed" is very negligible in both tables. In the 1000 meter radius table, there are no persons killed at all from April to mid-September, therefore it is very likely that there will be no persons killed until the end of September.
 Negligible in the 2000 meter radius table.
 In addition, the correlation with the label "number_of_pickups" we calculated earlier for the 2000 table was also very negligible (0.014).
 In conclusion, we will remove this feature.
 
-
-TODO - FIX FOR ALL FEATURES:
-Now, another check, for multicollinearity among features. If some features are highly correlated with each other, we might want to drop one of them to avoid redundancy. This is done using the Variance Inflation Factor (VIF):
+--------
+Now, we will take a look on the catagorial features:
+We would like to see whether the effect of a categorical feature on the label (number_of_pickups) is strong or weak. We will use Box plot to visually assess the distribution of the label within each category, giving insight into whether the categorical feature significantly impacts the label.
 
 ```{r}
-# Fit a linear model to calculate VIF
-model <- lm(number_of_pickups ~ temp + humidity + wind_speed + feels_like + clouds_all + is_raining_last_hour + is_night + is_weekend+ number_of_persons_injured+ number_of_crashes+ event_count+ taxis_pickup_count+ total_arrests+ memorial_day+ independence_day+labor_day , data = train_filtered_1000m_data)
+# Function to create box plots for each categorical feature
+plot_categorical_effect <- function(data, categorical_features, label, dataset_name, fill_color) {
+  
+  # Loop through each categorical feature
+  for (feature in categorical_features) {
+    
+    # Ensure the feature is treated as a factor (for two levels: 0 and 1)
+    data[[feature]] <- as.factor(data[[feature]])
+    
+    # Create the boxplot for each categorical feature against the label
+    p <- ggplot(data, aes_string(x = feature, y = label, fill = feature)) +  # Use fill to color the boxes by feature
+      geom_boxplot(color = "black") +
+      labs(x = feature, y = label, 
+           title = paste("Effect of", feature, "on", label, "-", dataset_name)) +
+      scale_fill_manual(values = c(fill_color, fill_color)) +  # Set custom colors for the boxes
+      theme_minimal() +
+      theme(plot.title = element_text(size = 12, hjust = 0.5, margin = margin(b = 10)),
+            axis.text.x = element_text(size = 10, angle = 0, hjust = 0.5),  # No rotation needed
+            axis.text.y = element_text(size = 10),
+            axis.title.x = element_text(size = 12),
+            axis.title.y = element_text(size = 12),
+            plot.margin = unit(c(1, 1, 1, 1), "cm"))  # Adjust margins
+    
+    # Print the plot in a new window
+    print(p)
+  }
+}
 
-# Calculate VIF
-vif_values <- vif(model)
-print(vif_values)
-
-# Drop features with VIF > 5 (indicative of multicollinearity)
 ```
 
 ```{r}
-# Define a function to fit the linear model and calculate VIF
-calculate_vif <- function(data, dataset_name) {
+plot_categorical_effect(train_filtered_1000m_data, categorical_features, "number_of_pickups", "1000m Data", "lightblue")
+```
+
+```{r}
+plot_categorical_effect(train_filtered_2000m_data, categorical_features, "number_of_pickups", "2000m Data", "lightgreen")
+```
+
+We can see & learn that:
+1.is_snowing_last_hour: 
+* Has only 0 value in both datasets, this makes sense given the months covered (April to September) are not snowy months in New York City. Therefore, this feature will be omitted for both the 1000m and 2000m datasets.
+
+2. is_weekend:
+* In the 1000m data, there is a noticeable decrease in the number of pickups on weekends. Weekdays (is_weekend = 0) show a higher median and wider range of pickups compared to weekends (is_weekend = 1).
+* In the 2000m data, the effect of weekends is less pronounced, with very similar medians and distributions for both weekends and weekdays.
+
+3. is_night:
+* In the 1000m data, the number of pickups drops significantly at night (is_night = 1). The median and interquartile range (IQR) are lower, indicating reduced Uber demand during nighttime in closer proximity to the Empire State Building.
+* In the 2000m data, the nighttime effect is less drastic, though there is still a slight decrease in the number of pickups during the night compared to daytime.
+
+4. is_raining_last_hour: 
+* In both 1000m and 2000m data, there is no significant effect of rain on the number of pickups. The medians and IQRs are quite similar whether it is raining or not, suggesting that rain does not strongly affect Uber demand in this dataset.
+
+5. memorial_day, independence_day, and labor_day: 
+* In both datasets, we observe fewer pickups on holidays, with lower median pickups on Memorial Day, Independence Day, and Labor Day compared to regular days. However, the imbalance with non-holidays might exaggerate this effect. We will investigate these holidays further to check for behavioral changes in Uber demand and use these variables to identify potential outliers.
+
+-------
+Some conclusions so far:
+We will remove the features is_snowing_last_hour and number_of_persons_killed from both of the datasets:
+```{r}
+# Function to remove features from the dataset and update numerical and categorical feature lists
+remove_features <- function(data, features_to_remove) {
+  
+ # Loop through each feature to remove
+  for (feature in features_to_remove) {
+    
+    # Check if the feature is in numerical_features and remove it if present
+    if (feature %in% numerical_features) {
+      numerical_features <<- setdiff(numerical_features, feature)
+    }
+    
+    # Check if the feature is in categorical_features and remove it if present
+    if (feature %in% categorical_features) {
+      categorical_features <<- setdiff(categorical_features, feature)
+    }
+  }
+  
+  # Remove the specified features from the dataset
+  data <- data %>%
+    select(-all_of(features_to_remove))
+  
+  # Return the updated data
+  return(data)
+}
+```
+
+```{r}
+features_to_remove <- c("is_snowing_last_hour", "number_of_persons_killed")
+```
+
+```{r}
+train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
+train_filtered_2000m_data
+```
+
+```{r}
+categorical_features
+```
+```{r}
+numerical_features
+```
+
+-------
+"In this section, we'll perform a multicollinearity check among the numerical features. If any features are highly correlated, we may remove one to prevent redundancy. We'll use the Variance Inflation Factor (VIF) to identify potential multicollinearity issues."
+
+```{r}
+# Define a function to fit the linear model and calculate VIF for numerical features only
+calculate_vif <- function(data, dataset_name, numerical_features) {
+  # Create a formula with only numerical features for VIF calculation
+  formula <- as.formula(paste("number_of_pickups ~", paste(numerical_features[-1], collapse = " + ")))
+  
   # Fit a linear model to calculate VIF
-  model <- lm(number_of_pickups ~ temp + humidity + wind_speed + feels_like + clouds_all + 
-              is_raining_last_hour + is_night + is_weekend + number_of_persons_injured + 
-              number_of_crashes + event_count + taxis_pickup_count + total_arrests + 
-              memorial_day + independence_day + labor_day, data = data)
+  model <- lm(formula, data = data)
   
   # Calculate VIF
   vif_values <- vif(model)
@@ -1782,6 +1829,7 @@ calculate_vif <- function(data, dataset_name) {
   # Check for variables with VIF > 5
   high_vif <- vif_values[vif_values > 5]
   
+  cat("\n")
   if (length(high_vif) > 0) {
     print(paste("Features with VIF > 5 for", dataset_name))
     print(high_vif)
@@ -1789,157 +1837,142 @@ calculate_vif <- function(data, dataset_name) {
     print(paste("No features with VIF > 5 for", dataset_name))
   }
 }
-
 ```
+
 
 ```{r}
 # Call the function for train_filtered_1000m_data
-calculate_vif(train_filtered_1000m_data, "train_filtered_1000m_data")
+calculate_vif(train_filtered_1000m_data, "train_filtered_1000m_data", numerical_features)
 ```
+
 ```{r}
 # Call the function for train_filtered_2000m_data
-calculate_vif(train_filtered_2000m_data, "train_filtered_2000m_data")
+calculate_vif(train_filtered_2000m_data, "train_filtered_2000m_data", numerical_features)
 ```
 
-todo explain for both datasets and change numbers
+We have identified (as we expected) a very high Variance Inflation Factor (VIF) for both temp and feels_like in both datasets, indicating strong multicollinearity between these two variables. This aligns with the high correlation (close to 1) observed earlier between temp and feels_like. To address this, we will drop one of them. In this case, we will drop temp as it shows a slightly weaker correlation with the target variable number_of_pickups, and we will keep feels_like in the model.
 
-It looks like you have a very high Variance Inflation Factor (VIF) for both temp (116.32) and feels_like (113.91), which suggests strong multicollinearity between these two variables. This is consistent with the high correlation (almost 1) between temp and feels_like that we observed earlier.
-
-Actions to Take:
-Drop one of the highly collinear features: In this case, since temp and feels_like are almost identical, we can drop one of them (likely feels_like since temp is more commonly used).
-
-Summary:
-We performed 2 tests, a correlation test and a multicollinearity test (VIF) and decided that the feature "feels_like" will be removed.
-Also, we removed "is_snowing_last_hour" since it has only one value = 0. There was no snow and it is not expected to snow during the time period we are forecasting (explained earlier).
-
-About the features we imported from the empire-state-weather-2014.csv:
-
-humidity: Humidity on its own, while affecting comfort, does not have a strong direct link to transportation choices like Uber. It is less noticeable for people compared to rain or temperature. Moreover, in moderate ranges, it might not significantly impact decision-making for taking an Uber.
-
-wind_speed: Unless the wind is extremely strong, it usually does not impact daily decision-making for commuting. In New York, moderate winds are common and unlikely to have much influence on whether someone calls for an Uber.
-
-clouds_all: Cloud cover may have some impact on comfort, but it lacks a direct influence on mobility decisions. People are not as likely to alter their transportation plans based on clouds alone unless they are associated with imminent rain, which is already captured by the "is_raining_last_hour" feature.
-
-Features to Keep:
-temp (Temperature): Temperature has a clear and direct impact on transportation choices. In both extreme heat and cold, people are less willing to walk or use public transit. In New York, uncomfortable temperatures, whether very hot or very cold, can drive people to opt for Uber rides. Hence, it is a strong predictor of pickup demand.
-
-is_raining_last_hour: Rain is one of the most significant factors that influence Uber pickups. When it rains, people are much more likely to avoid walking, biking, or using public transportation, and instead call for a ride. This feature captures a clear, observable shift in behavior, making it a strong predictor of ride demand.
-
-Conclusion:
-By focusing on temperature and rain, we are capturing the two most significant environmental factors of temperature that directly affect people's willingness to use Uber in New York. These factors explain a substantial amount of variability in Uber pickup demand, especially compared to more passive features like cloud cover or wind speed, which have less immediate impact on transportation decisions.
-
-This logical reduction simplifies our model, allowing us to focus on the most influential features without losing explanatory power.
-
-Removing Features:
+Lets run the function to remove this feature:
 ```{r}
-# Define a function to remove specific columns from a dataset
-remove_columns <- function(data, columns_to_remove) {
-  # Remove the specified columns from the dataset
-  data <- data[, !names(data) %in% columns_to_remove]
-  return(data)
-}
-
-# Columns to be removed
-columns_to_remove <- c("feels_like", "is_snowing_last_hour", "number_of_persons_killed", "humidity", "clouds_all", "wind_speed")
-
-# Remove the columns from train_filtered_1000m_data
-train_filtered_1000m_data <- remove_columns(train_filtered_1000m_data, columns_to_remove)
-
-# Remove the columns from train_filtered_2000m_data
-train_filtered_2000m_data <- remove_columns(train_filtered_2000m_data, columns_to_remove)
-
-# Remove the columns from test_fixed_data
-test_fixed_data <- remove_columns(test_fixed_data, columns_to_remove)
-
-```
-```{r}
-# Printing col names:
-cat("1000 meter data columns:\n")
-print(colnames(train_filtered_1000m_data))
+features_to_remove <- c("temp")
 ```
 
 ```{r}
-cat("2000 meter data columns:\n")
-print(colnames(train_filtered_2000m_data))
+train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
+train_filtered_1000m_data
 ```
+
 ```{r}
-cat("test data columns:\n")
-print(colnames(test_fixed_data))
+train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
+train_filtered_2000m_data
 ```
 
+```{r}
+categorical_features
+```
 
-Great!
+```{r}
+numerical_features
+```
+
+--------
+
+Removing wind_speed and clouds_all:
+1. wind_speed:
+* The correlation between wind_speed and number_of_pickups is very low: -0.02 (1000m) and -0.03 (2000m).
+* In an urban environment like New York City, wind speed has minimal impact on transportation behavior. The city's infrastructure, such as sheltered streets and extensive public transit, reduces the influence of everyday wind fluctuations on Uber demand.
+
+2. clouds_all:
+* The correlation between clouds_all and number_of_pickups is weak: 0.14 in both datasets.
+* Cloudiness doesn't significantly impact transportation behavior. Unlike rain or snow, cloud cover alone isn't disruptive enough to influence Uber demand in New York City, making it less relevant for predictive modeling.
+
+Lets run the function to remove those features:
+```{r}
+features_to_remove <- c("wind_speed", "clouds_all")
+```
+
+```{r}
+train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
+train_filtered_2000m_data
+```
+
+```{r}
+categorical_features
+```
+
+```{r}
+numerical_features
+```
+
+#### Descriptive Statistics and Visualization
 Now, Lets do some visualizations to understand how the variables behave:
 ```{r}
-# Basic summary statistics
+# Basic summary statistics - 1000m
 summary(train_filtered_1000m_data)
+```
+```{r}
+# Basic summary statistics - 2000m
 summary(train_filtered_2000m_data)
 ```
+Key Observations from the 1000m Dataset:
+1. Number of Pickups: The median number of pickups is 37, with a maximum of 190. The distribution shows that pickups vary widely in the 1000m radius.
+2. Weather: Humidity has a median of 49, and feels_like is around 23.85. Rain is infrequent (mean is 0.16), suggesting rain likely doesn't have a strong influence on demand.
+3. Crashes and Injuries: Crashes and injuries are rare in the 1000m area (median values are 0), indicating that incidents might not have a significant effect on Uber demand in this radius.
+4. Holidays: Memorial Day, Independence Day, and Labor Day are rare occurrences (mean close to 0), so their effect on demand could be limited.
+5. Taxi Pickups and Arrests: Taxi pickups have a median of 641, and total arrests have a median of 34, which indicates moderate activity in both taxi services and law enforcement within the 1000m radius.
 
-Summary of Descriptive Statistics:
-1. train_filtered_1000m_data
-Number of Pickups: Ranges from 1 to 190, with a mean of 44.5, suggesting moderate demand overall.
-Temperature: Ranges from 4.24°C to 33.19°C, with a mean of 22.43°C. This indicates the dataset covers a broad range of temperatures from cool to hot.
+Key Observations from the 2000m Dataset:
+1. Number of Pickups: The median number of pickups is 204, with a maximum of 521, showing a larger volume of activity in this area.
+2. Weather: Humidity has a median of 49, and feels_like is around 23.82. Rain is similarly infrequent (mean of 0.16), likely not a major factor for Uber demand.
+3. Crashes and Injuries: There is a higher occurrence of crashes and injuries (median values: 4 crashes, 1 injury), reflecting more frequent incidents in the larger radius.
+4. Holidays: Holidays are rare (mean close to 0), and further analysis would be needed to assess their impact on Uber demand.
+5. Taxi Pickups and Arrests: Taxi pickups have a median of 641, and total arrests have a median of 985, indicating substantial taxi and law enforcement activity within the 2000m radius.
 
-Is Raining: Rain occurred in ~16% of the intervals, as shown by the mean value of 0.1594.
+##### Label & Features Analysis
 
-
-2. train_filtered_2000m_data
-Number of Pickups: Ranges from 9 to 204, with a higher average of 132, indicating higher demand compared to the 1000m dataset.
-Temperature: The ranges and averages for this feature are nearly identical to the 1000m dataset, reflecting similar environmental conditions.
-Is Raining: Rain occurred in ~16% of the intervals, similar to the 1000m dataset.
-
-Conclusion:
-The 2000m dataset shows higher pickup demand on average compared to the 1000m dataset.
-Both datasets have similar weather conditions and rain occurrence - makes sense because both datasets are in more or less the same area in New York.
-
-
-1. Distribution of Number of Pickups
-We start by visualizing the distribution of the dependent variable (number_of_pickups).
+Distribution of Number of Pickups: We start by visualizing the distribution of the dependent variable (number_of_pickups).
 ```{r}
 # Define a function to create the histogram for the distribution of "number_of_pickups"
-plot_pickup_distribution <- function(data, dataset_name) {
+plot_pickup_distribution <- function(data, dataset_name, fill_color) {
   ggplot(data, aes(x = number_of_pickups)) +
-    geom_histogram(bins = 30, fill = "blue", color = "black") +
+    geom_histogram(bins = 30, fill = fill_color, color = "black") +
     labs(
       title = paste("Distribution of Number of Pickups -", dataset_name),
       x = "Number of Pickups",
       y = "Count"
     )
 }
-
-# Call the function for train_filtered_1000m_data_cleaned
-plot_pickup_distribution(train_filtered_1000m_data, "train_filtered_1000m_data")
-
-# Call the function for train_filtered_2000m_data_cleaned
-plot_pickup_distribution(train_filtered_2000m_data, "train_filtered_2000m_data")
-
 ```
 
-Here is a brief summary based on the graph:
+```{r}
+# Call the function for train_filtered_1000m_data
+plot_pickup_distribution(train_filtered_1000m_data, "train_filtered_1000m_data", "lightblue")
+```
+Observations from the 1000m Data:
+* The distribution of the number of pickups is right-skewed, with the majority of data points concentrated between 0 and 100 pickups.
+* A large number of instances have fewer than 50 pickups, indicating that within the 1000m radius of the Empire State Building, lower pickup counts are more frequent.
+* There are fewer instances with a high number of pickups (100+), suggesting that higher demand events or locations are less frequent within this smaller radius.
 
-train_filtered_1000m_data:
-The majority of pickups fall within the lower range, with most values between 10 and 60 pickups.
-The distribution has a right skew, meaning there are fewer intervals with higher numbers of pickups (above 100).
-The highest frequency of intervals is observed around 20–40 pickups, which suggests that this range is the most common in the data.
-Pickups greater than 100 are rare, indicating that high-demand periods are less frequent in the dataset.
+```{r}
+# Call the function for train_filtered_2000m_data
+plot_pickup_distribution(train_filtered_2000m_data, "train_filtered_2000m_data", "lightgreen")
+```
+Observations from the 2000m Data:
+* The distribution is more symmetric and appears closer to a normal distribution, with most data points falling between 100 and 300 pickups.
+* Pickup counts are higher overall, indicating that in the 2000m radius, larger-scale demand for Uber rides is more common.
+* There is a wider range of pickups in this dataset, with instances reaching up to 400 pickups, implying a more diverse set of demand situations at this larger distance from the Empire State Building.
 
-train_filtered_2000m_data:
+------------
 
-Shape of Distribution:
-The distribution is approximately bell-shaped, with most pickups concentrated between 100 to 300 pickups.
-The peak of the distribution is around 200 pickups, indicating that this is the most frequent number of pickups in the dataset.
 
-Right Skew:
-There is a slight right skew, meaning there are fewer intervals with a very high number of pickups (above 400).
-The distribution tapers off after 300 pickups, with only a few intervals having pickups above 400.
-Common Pickup Range:
+------------
 
-Most of the data points lie between 100 and 300 pickups, suggesting that this is the typical demand range in the area covered by this dataset.
-
-Summary:
-The number of Uber pickups in the 2000m radius dataset follows a bell-shaped distribution, with a peak around 200 pickups and fewer instances of extreme values (either low or high). This distribution suggests that the demand is generally consistent, with most intervals showing moderate levels of Uber pickups.
-
+# TODO - FIX FROM DOWN HERE:
 2. Number of Pickups vs. Temperature
 Temperature has a strong impact on people's decision to use Uber, especially during extreme weather conditions.
 ```{r}

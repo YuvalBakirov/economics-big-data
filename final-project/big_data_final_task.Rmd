@@ -1545,7 +1545,6 @@ categorical_features <- c("is_weekend", "is_night", "is_raining_last_hour", "is_
 categorical_features
 ```
 
-
 #### Looking At The Features 
 Firstly, we will use correlation analysis to:
 1. determine which features are less likely to explain or predict the number of pickups (features that have low correlation with number_of_pickups)
@@ -1968,7 +1967,197 @@ Observations from the 2000m Data:
 * There is a wider range of pickups in this dataset, with instances reaching up to 400 pickups, implying a more diverse set of demand situations at this larger distance from the Empire State Building.
 
 ------------
-TODO - what is autocorrelation in time series??
+*TODO - what is autocorrelation in time series??*
+------------
+
+Here's a function that plots the number of Uber pickups over time: 
+```{r}
+plot_pickups_over_time <- function(data, dataset_name, color) {
+  
+  # Ensure 'time_interval' is in POSIXct format for time-based plotting
+  data$time_interval <- as.POSIXct(data$time_interval)
+  
+  # Create the plot
+  ggplot(data, aes(x = time_interval, y = number_of_pickups)) +
+    geom_line(color = color) +  # Line plot with the specified color
+    labs(
+      title = paste("Uber Pickups Over Time -", dataset_name),
+      x = "Time",
+      y = "Number of Pickups"
+    ) +
+    theme_minimal()  # Apply a clean theme
+}
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+plot_pickups_over_time(train_filtered_1000m_data, "train_filtered_1000m_data", "lightblue")
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+plot_pickups_over_time(train_filtered_2000m_data, "train_filtered_2000m_data", "lightgreen")
+```
+Observations:
+* Both plots show frequent and regular peaks, indicating periods of high demand. The troughs (lower points) suggest moments of lower demand. This suggests a cyclic pattern, likely related to daily commuting hours or other temporal factors like weekends or holidays.
+
+* In the second plot (2000m data), the pickups range significantly higher (up to 500 pickups), while the 1000m data has a much lower maximum (around 150 pickups). This difference suggests that a wider radius (2000m) captures a larger area with more Uber activity, which is logical given the larger catchment area.
+
+* There's no obvious large seasonal shift over time in either plot, which means that, at least from this visual analysis, Uber demand is relatively stable over these months. The slight increase in variance towards the end of the plots (August and September) could be worth investigating further.
+
+
+So now lets look per month: Looking at the data per month helps to capture seasonal patterns or trends that might be lost when viewing all the data together. By breaking it down monthly, we can identify specific periods of high or low demand, spot any anomalies, and assess how Uber pickups fluctuate over time, which is critical for time-series analysis and forecasting.
+
+```{r}
+# Function to plot Uber pickups over time for each month
+plot_pickups_per_month <- function(data, color, dataset_name) {
+  # Add a 'month' column to the data for grouping by month
+  data$month <- format(as.Date(data$time_interval), "%Y-%m")
+  
+  # Loop through each unique month and plot the data
+  unique_months <- unique(data$month)
+  
+  for (month in unique_months) {
+    month_data <- data %>% filter(month == !!month) # Filter the data for each month
+    
+    # Create the plot
+    p <- ggplot(month_data, aes(x = as.POSIXct(time_interval), y = number_of_pickups)) +
+      geom_line(color = color) +
+      labs(
+        title = paste("Uber Pickups Over Time -", month, "-", dataset_name),
+        x = "Time",
+        y = "Number of Pickups"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      scale_x_datetime(date_labels = "%d-%H:%M", date_breaks = "1 day")
+    
+    # Display the plot
+    print(p)
+  }
+}
+```
+
+```{r}
+plot_pickups_per_month(train_filtered_1000m_data, "lightblue", "1000m Data")
+```
+
+```{r}
+plot_pickups_per_month(train_filtered_2000m_data, "lightgreen", "2000m Data")
+```
+
+Observations: TODO
+
+
+```{r}
+# Function to plot the number of pickups per month
+plot_monthly_behavior <- function(data, dataset_name, color) {
+  # Convert time_interval to date format and extract month
+  data$month <- format(as.Date(data$time_interval), "%Y-%m")
+  
+  # Summarize the total pickups per month
+  monthly_data <- data %>%
+    group_by(month) %>%
+    summarise(total_pickups = sum(number_of_pickups))
+  
+  # Create a line plot to show the behavior of pickups per month
+  ggplot(monthly_data, aes(x = month, y = total_pickups, group = 1)) +
+    geom_line(color = color, size = 1) +
+    geom_point(color = color, size = 2) +
+    labs(
+      title = paste("Monthly Behavior of Uber Pickups -", dataset_name),
+      x = "Month",
+      y = "Total Pickups"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+# Call the function for 1000m data
+plot_monthly_behavior(train_filtered_1000m_data, "1000m Data", "lightblue")
+```
+```{r}
+# Call the function for 2000m data
+plot_monthly_behavior(train_filtered_2000m_data, "2000m Data", "lightgreen")
+```
+Note: There is a sharp drop in September because only 9 days are present for that month in the dataset, whereas the other months represent full months.
+
+Here is the code to show the number of days in each month:
+```{r}
+# Function to calculate the number of days present in each month
+count_days_per_month <- function(data, dataset_name) {
+  data %>%
+    mutate(month = format(time_interval, "%Y-%m")) %>%
+    group_by(month) %>%
+    summarize(number_of_days = n_distinct(as.Date(time_interval))) %>%
+    arrange(month) %>%
+    print(paste("Number of days per month -", dataset_name))
+}
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+count_days_per_month(train_filtered_1000m_data, "1000m Data")
+```
+
+```{r}
+# Call the function for train_filtered_2000m_data
+count_days_per_month(train_filtered_2000m_data, "2000m Data")
+```
+SO: Overall, the demand for Uber appears to be on the rise, except for a small decrease observed in June. We will later investigate what might have caused this dip in demand during that month to understand if any specific factors contributed to it.
+
+Lets try and see why:
+TODO
+
+------------
+
+Special events count in every month:
+```{r}
+# Define the function to create the box plot for event sum by month
+plot_event_sum_by_month <- function(data, color) {
+  
+  # Extract the month from the time_interval
+  data <- data %>%
+    mutate(month = format(as.Date(time_interval), "%Y-%m"))
+  
+  # Group by month and calculate the sum of events for each month
+  monthly_event_sum <- data %>%
+    group_by(month) %>%
+    summarise(event_sum = sum(event_count))
+  
+  # Create the box plot
+  ggplot(monthly_event_sum, aes(x = month, y = event_sum)) +
+    geom_boxplot(fill = color, color = "black") +
+    labs(
+      title = "Event Sum by Month",
+      x = "Month",
+      y = "Event Sum"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate the x-axis labels for better readability
+}
+```
+
+```{r}
+plot_event_sum_by_month(train_filtered_1000m_data, "lightblue")
+```
+
+```{r}
+plot_event_sum_by_month(train_filtered_2000m_data, "lightgreen")
+```
+
+------------
+
+```{r}
+
+```
+
+------------
+```{r}
+
+```
 
 ------------
 

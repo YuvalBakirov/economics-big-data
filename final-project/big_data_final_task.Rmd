@@ -1386,6 +1386,28 @@ test_fixed_data
 
 If all the features-Memorial_Day, Independence_Day, and Labor_Day-are set to 0, it indicates that the date is a regular day (not a holiday).
 
+Lets remove the rounded_timestamp because its not necessary:
+```{r}
+# Function to remove the 'rounded_timestamp' column from the dataset
+remove_rounded_timestamp <- function(data) {
+  data %>%
+    select(-rounded_timestamp)
+}
+```
+
+```{r}
+train_filtered_1000m_data <- remove_rounded_timestamp(train_filtered_1000m_data)
+```
+
+```{r}
+train_filtered_2000m_data <- remove_rounded_timestamp(train_filtered_2000m_data)
+```
+
+```{r}
+test_fixed_data <- remove_rounded_timestamp(test_fixed_data)
+```
+
+
 Lets check NAs after adding new features:
 ```{r}
 # For 1000m data
@@ -1426,7 +1448,6 @@ Filtered Data: Data was filtered based on distance from the Empire State Buildin
 2. The train_filtered_2000m_data includes pickups from over 2000 meters away from the Empire State Building. 
 
 New Variables: The dataset includes additional columns like time_interval, number_of_pickups,	is_weekend, is_night, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour, number_of_persons_injured, number_of_persons_killed, number_of_crashes, event_count, taxis_pickup_count, felony_count, misdemeanor_count, total_arrests, memorial_day, independence_day, labor_day  
-and also an helper feature rounded_timestamps: The timestamps were rounded to 15-minute intervals.
 
 ---------------
 We added a lot of features, we probably won't need all of them, we'll start with dry logic and then move on to tests and observations.

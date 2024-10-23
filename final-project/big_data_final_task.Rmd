@@ -1165,16 +1165,21 @@ The weather_data dataset spans from 2014-01-01 00:00:00 to 2014-12-31 23:00:00, 
 
 We combine weather data (temperature, humidity, wind speed, and snow indication) with the Uber pickup data (1000m and 2000m datasets) using the hourly_time_interval as the key. We round all Uber pickup timestamps (i.e., the time_interval) down to the current hour to match the weather data, which is recorded at one-hour intervals. This approach ensures that the weather conditions are consistently matched with the Uber pickup data at the appropriate hourly time.
 
-We are using a function called rounded_timestamp that adds a new feature to the Uber pickup datasets. This feature rounds the time_interval down to the start of the current hour to align it with the hourly_time_interval in the weather data.
+We are using a function called rounded_timestamp that adds a new feature to the Uber pickup datasets. This feature rounds the time_interval according to the following rules: if the time_interval has minutes of 00 or 15, it is rounded down to the current hour; if it has minutes of 30 or 45, it is rounded up to the next hour. This ensures that the Uber pickup data aligns with the hourly_time_interval in the weather data, which is recorded at one-hour intervals.
 ```{r}
-# Function to round the time_interval to the current hour
+# Function to round the time_interval and ensure it's in POSIXct format
 rounded_timestamp <- function(df) {
   df %>%
     mutate(
-      rounded_timestamp = as.POSIXct(floor_date(time_interval, "hour"), format="%Y-%m-%d %H:%M:%S", tz = "UTC")
+      rounded_timestamp = case_when(
+        minute(time_interval) %in% c(30, 45) ~ as.POSIXct(ceiling_date(time_interval, "hour"), tz = "UTC"),
+        minute(time_interval) %in% c(0, 15) ~ as.POSIXct(floor_date(time_interval, "hour"), tz = "UTC")
+      )
     )
 }
+
 ```
+
 
 ```{r}
 # Round time_interval for 1000m data
@@ -1336,6 +1341,14 @@ crashes_sums_1000m
 crashes_sums_2000Am
 ```
 
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(train_filtered_1000m_data, "crash_time_15min") 
+```
+```{r}
+get_duplicate_time_intervals(train_filtered_2000m_data, "crash_time_15min") 
+```
+
 fix crash_time_15min format:
 (We will use a general function that can be useful in the future)
 ```{r}
@@ -1423,6 +1436,11 @@ nyc_event_counts <- convert_time_to_datetime(nyc_event_counts, "time_interval")
 nyc_event_counts
 ```
 
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(nyc_event_counts, "time_interval") 
+```
+
 Checking time range:
 ```{r}
 range(nyc_event_counts$time_interval)
@@ -1495,6 +1513,15 @@ yellow_taxis_1000m
 # Usage for 2000m crash data
 yellow_taxis_2000Am <- convert_time_to_datetime(yellow_taxis_2000Am, "pickup_time_15min")
 yellow_taxis_2000Am
+```
+
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(yellow_taxis_1000m, "pickup_time_15min") 
+```
+
+```{r}
+get_duplicate_time_intervals(yellow_taxis_2000Am, "pickup_time_15min") 
 ```
 
 Checking time range:
@@ -1597,6 +1624,15 @@ arrests_1000m
 
 ```{r}
 arrests_2000Am
+```
+
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(arrests_1000m, "arrest_date") 
+```
+
+```{r}
+get_duplicate_time_intervals(arrests_2000Am, "arrest_date") 
 ```
 
 ransform Daily Arrest Data to 15-Minute Intervals:

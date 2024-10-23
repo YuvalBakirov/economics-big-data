@@ -1,0 +1,2801 @@
+---
+title: "big_data_final_task"
+author: "Ariel&Eitan&Yuval"
+date: "2024-10-05"
+output: html_document
+---
+
+# Project: Predict Uber Demand in New York
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load necessary libraries
+```{r necessary_libraries}
+library(tidyr)
+library(dplyr)
+library(geosphere) 
+library(leaflet)
+library(ggplot2)
+library(lubridate)
+library(readr)
+library(stringr)
+library(corrplot)
+library(car)
+library(gridExtra) #install.packages("gridExtra")
+library(grid)
+```
+
+## Load the CSV files
+```{r load_data}
+train_raw_data <- read.csv("train_raw_data.csv")
+train_2000m_data <- read.csv("train_raw_data_dists_more_then_2000.csv")
+test_data <- read.csv("test_set.csv")
+```
+
+### train_raw_data.csv
+train_raw_data.csv: Contains all Uber pickups in NYC between April 1 and September 9, 2014, without filtering by distance.
+
+```{r raw_data_look}
+# Show the first 5 rows of each train_raw_data
+head(train_raw_data, 5)
+
+# Summary statistics for the full dataset
+summary(train_raw_data)
+```
+* Latitude (lat) ranges from 39.66 to 42.12, and Longitude (lon) ranges from -74.93 to -72.07, indicating the pickups occurred within the New York area.
+
+* The median and mean values for both latitude (around 40.74) and longitude (around -73.97) show that most pickups took place near the central part of New York, close to the Empire State Building.
+
+### train_raw_data_dists_more_then_2000.csv
+train_raw_data_dists_more_then_2000.csv: Contains only Uber pickups outside a 2000-meter radius from the Empire State Building.
+
+```{r filtered_data_look}
+# Show the first 5 rows of each train_raw_data
+head(train_2000m_data, 5)
+
+# Summary statistics for the filtered dataset
+summary(train_2000m_data)
+```
+
+* Similar latitude and longitude ranges, but these pickups occurred outside a 2000-meter radius from the Empire State Building.
+
+* The dist column represents the distance from the Empire State Building, ranging from 2000 meters to 220,970 meters (about 221 km). The median distance is 4083 meters.
+
+#### Features Explanation:
+Datasets train_raw_data.csv and train_raw_data_dists_more_then_2000.csv features:
+
+1. datetime: This column represents the date and time when the Uber pickup occurred.
+
+2. lat: This column contains the latitude of the pickup location, indicating the geographical position (north-south axis) of the ride.
+
+3. lon: This column contains the longitude of the pickup location, representing the geographical position (east-west axis) of the ride.
+
+4. Base:  This column includes a code representing the TLC (Taxi and Limousine Commission) base company code affiliated with the Uber pickup. This code identifies the licensed dispatching base that managed the Uber trip. Every ride must be affiliated with a TLC-licensed base, which is responsible for dispatching the trip.(License Number).
+
+5. dist (only for train_raw_data_dists_more_then_2000.csv): This column represents the distance (in meters) between the pickup location and the Empire State Building. All values in this dataset are greater than 2000 meters, as the dataset is filtered to include only pickups beyond this radius.
+
+### test_set.csv
+```{r}
+test_data
+```
+We can observe that the test file contains time intervals in 15-minute increments, currently stored in character format. We need to convert these time intervals to POSIXct format for further analysis. The objective is then to use this data to predict the number of pickups using a trained model.
+
+```{r}
+test_fixed_data <- test_data %>%
+  mutate(time_interval = as.POSIXct(time_interval, format="%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+
+test_fixed_data
+```
+Note: In order to predict the number_of_pickups using a ML model, our test data should have the same features that were used to train the model.So, it is crucial to ensure that all the transformations, feature engineering steps, creating new features and any external data applied during the training process are also applied to the test data. Ensuring consistency in features allows the model to process the test data accurately and make reliable predictions based on the learned relationships during training.
+
+Looking at the map:
+```{r interactive_map}
+# # Define latitude, longitude, and radius
+# lat <- 40.7484 # Empire State Building coordinates
+# lon <- -73.985 # Empire State Building coordinates
+# 
+# small_radius <- 1000  # Radius in meters
+# big_radius <- 2000  # Radius in meters
+# 
+# # Create the leaflet map
+# leaflet() %>%
+#   addTiles() %>%  # Add default OpenStreetMap tiles
+#   addMarkers(lng = lon, lat = lat, popup = "Empire State Building") %>%  # 
+#   addCircles(lng = lon, lat = lat, radius = small_radius, color = "blue", fillOpacity = 0.2) %>% # 
+#   addCircles(lng = lon, lat = lat, radius = big_radius, color = "red", fillOpacity = 0.1)  #
+```
+
+#### Is 2000m is in train_raw?
+```{r filtered_data_look}
+
+# str(train_filtered_2000m_data)
+# str(train_raw_data)
+# 
+# # Ensure both data frames have the same columns before comparison
+# common_columns <- intersect(names(train_filtered_2000m_data), names(train_raw_data))
+# 
+# # Select only the common columns for comparison
+# train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
+# train_raw_data_common <- train_raw_data %>% select(all_of(common_columns))
+# 
+# # Now use setdiff to find rows in train_filtered_2000m_data not in train_raw_data
+# missing_rows <- setdiff(train_filtered_2000m_data_common, train_raw_data_common)
+# 
+# # Check if any rows are missing
+# if (nrow(missing_rows) == 0) {
+#   print("All rows in train_filtered_2000m_data are present in train_raw_data.")
+# } else {
+#   print("Some rows in train_filtered_2000m_data are missing from train_raw_data.")
+#   print(missing_rows)
+# }
+
+```
+So, 2,623  rows in 2000m are unique - (not in train_raw_data)
+
+#### Is 2000 above from train_data in 2000m?
+```{r filtered_data_look}
+
+# # Create a new dataframe with rows where dist is greater than or equal to 2000
+# check_train_raw_above_2000 <- train_raw_data %>%
+#   filter(dist >= 2000)
+# 
+# # Ensure both data frames have the same columns before comparison
+# common_columns <- intersect(names(check_train_raw_above_2000), names(train_filtered_2000m_data))
+# 
+# # Select only common columns for comparison
+# check_train_raw_above_2000_common <- check_train_raw_above_2000 %>% select(all_of(common_columns))
+# train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
+# 
+# # Now use setdiff
+# missing_rows <- setdiff(check_train_raw_above_2000_common, train_filtered_2000m_data_common)
+# 
+# # Check if any rows are missing
+# if (nrow(missing_rows) == 0) {
+#   print("All rows in check_train_raw_above_2000 are present in train_filtered_2000m_data.")
+# } else {
+#   print("Some rows in check_train_raw_above_2000 are missing from train_filtered_2000m_data.")
+#   print(missing_rows)
+# }
+```
+
+## Part A: Data Rearrangement
+
+### Filtering Data
+Only relevant for the train_raw_data.csv data:
+```{r}
+# Define Empire State Building coordinates
+empire_state_coords <- c(-73.985, 40.7484)  # Longitude, Latitude
+
+# Calculate the distance from each pickup to the Empire State Building
+train_raw_data <- train_raw_data %>%
+  mutate(dist = distHaversine(cbind(lon, lat), empire_state_coords))
+```
+
+We would like to see how our data is distributed:
+```{r}
+# Add a new column 'distance_category' to classify the distance
+train_raw_data <- train_raw_data %>%
+  mutate(distance_category = ifelse(dist <= 1000, "<= 1000 meters", "> 1000 meters"))
+
+ggplot(train_raw_data, aes(x = distance_category)) +
+  geom_bar(fill = c("lightblue", "lightgreen")) +
+  labs(title = "Count of Uber Pickups within and beyond 1000 meters",
+       x = "Distance Category",
+       y = "Count of Pickups") +
+  theme_minimal()
+```
+
+We can see that there are many Uber pickups occurred beyond the 1000-meter radius that need to be filtered.
+
+```{r filtering_data}
+# Filter data to include only pickups within a 1000-meter radius and remove the 'distance_category' column
+train_filtered_1000m_data <- train_raw_data %>%
+  filter(dist <= 1000) %>%
+  select(-distance_category)  # Remove the 'distance_category' column if it exists
+```
+
+Making sure the filter is done
+```{r}
+# Check the maximum distance in the filtered dataset
+max_distance <- max(train_filtered_1000m_data$dist)
+
+# Print the maximum distance
+print(paste("Maximum distance in the 1000m dataset is:", max_distance))
+```
+Let's check how many rows in this dataset we are left with:
+```{r}
+rows_1000m <- nrow(train_filtered_1000m_data)
+print(paste("Number of rows in the 1000m dataset:", rows_1000m))
+
+rows_2000m <- nrow(train_2000m_data)
+print(paste("Number of rows in the 2000m dataset:", rows_2000m))
+```
+
+```{r}
+train_filtered_1000m_data
+```
+
+```{r}
+train_2000m_data
+```
+
+### Filtering by Time
+We need to make sure the timestamp column is formatted correctly.
+* The timestamp format (for example: 2014-04-01T00:02:00Z) includes a "T" between the date and time and ends with a "Z", which indicates that the time is in UTC (Coordinated Universal Time).
+We need to adjust the format argument to handle this format. Additionally, we can specify the time zone using tz = "UTC" to make sure the conversion handles the UTC time correctly.
+```{r}
+# Ensure the 'timestamp' column is in POSIXct format, handling the 'T' and 'Z' characters
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  mutate(timestamp = as.POSIXct(timestamp, format="%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+
+train_filtered_2000m_data <- train_2000m_data %>%
+  mutate(timestamp = as.POSIXct(timestamp, format="%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+```
+
+Visualize the distribution of Uber pickups by hour to check if there are any outside 17:00-00:00:
+```{r}
+plot_pickup_distribution <- function(data, title, color) {
+  ggplot(data, aes(x = hour(timestamp))) +
+    geom_bar(fill = color) +
+    labs(title = title,
+         x = "Hour of Day",
+         y = "Count of Pickups") +
+    scale_x_continuous(breaks = 0:23) +  # Set x-axis for hours (0 to 23)
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for clarity
+}
+```
+Lets say that each dataset will get a color: lightblue for the 1000m data and lightgreen for the 2000m data
+
+```{r}
+# For 1000-meter filtered data
+plot_pickup_distribution(train_filtered_1000m_data, "Distribution of Uber Pickups by Hour (1000m Data)", "lightblue")
+```
+
+```{r}
+# For 2000-meter filtered data
+plot_pickup_distribution(train_filtered_2000m_data, "Distribution of Uber Pickups by Hour (2000m Data)", "lightgreen")
+```
+As seen in the two graphs, there are significant amounts of data outside the desired range of 17:00 to 00:00 for both datasets (1000m and 2000m data). Therefore, to focus on the data for pickups that occurred between 17:00 and 00:00, we will apply a filter to exclude the hours outside this range.
+
+Filter data to include only pickups between 17:00 and 00:00:
+```{r}
+# Function to filter data between specified date-time range and specific hours (17:00 to 00:00)
+filter_time_interval <- function(data, timestamp_column, start_datetime, end_datetime) {
+  
+  # Convert the timestamp column to a proper datetime format if needed
+  data[[timestamp_column]] <- as.POSIXct(data[[timestamp_column]], tz = "UTC")
+  
+  # Apply the filter for the time range and desired hours
+  filtered_data <- data %>%
+    filter(
+      !!sym(timestamp_column) >= as.POSIXct(start_datetime, tz = "UTC") &
+      !!sym(timestamp_column) <= as.POSIXct(end_datetime, tz = "UTC") &
+      (hour(!!sym(timestamp_column)) >= 17 & hour(!!sym(timestamp_column)) <= 23 | 
+      (hour(!!sym(timestamp_column)) == 0 & minute(!!sym(timestamp_column)) == 0 & second(!!sym(timestamp_column)) == 0))
+    )
+  
+  return(filtered_data)
+}
+```
+
+
+```{r}
+# For 1000-meter filtered data
+train_filtered_1000m_data <- filter_time_interval(
+  data = train_filtered_1000m_data,
+  timestamp_column = "timestamp",
+  start_datetime = "2014-04-01 17:00:00",
+  end_datetime = "2014-09-09 00:00:00"
+)
+
+# For 2000-meter filtered data
+train_filtered_2000m_data <- filter_time_interval(
+  data = train_filtered_2000m_data,
+  timestamp_column = "timestamp",
+  start_datetime = "2014-04-01 17:00:00",
+  end_datetime = "2014-09-09 00:00:00"
+)
+```
+
+Check the Results:
+```{r}
+plot_hourly_pickup_distribution <- function(data, title, color) {
+  # Create a data frame with all hours from 0 to 23
+  hours <- data.frame(hour = 0:23)
+  
+  # Extract the hour and count the number of pickups per hour
+  hourly_data <- data %>%
+    mutate(hour = hour(timestamp)) %>%
+    count(hour)
+  
+  # Merge the hourly counts with the 'hours' data frame to include missing hours as 0
+  hourly_data_complete <- merge(hours, hourly_data, by = "hour", all.x = TRUE)
+  hourly_data_complete[is.na(hourly_data_complete)] <- 0  # Replace NAs with 0
+  
+  # Plot the hourly data
+  ggplot(hourly_data_complete, aes(x = hour, y = n)) +
+    geom_bar(stat = "identity", fill = color) +
+    labs(title = title,
+         x = "Hour of Day",
+         y = "Count of Pickups") +
+    scale_x_continuous(breaks = 0:23) +  # Show all hours from 0 to 23 on x-axis
+    theme_minimal()
+}
+```
+
+```{r}
+# Plot for 1000-meter filtered data (lightblue color)
+plot_hourly_pickup_distribution(train_filtered_1000m_data, 
+                                "Filtered Uber Pickups by Hour (1000m Data, Expected: 17:00 to 00:00)", 
+                                "lightblue")
+```
+```{r}
+# Plot for 2000-meter filtered data (lightgreen color)
+plot_hourly_pickup_distribution(train_filtered_2000m_data, 
+                                "Filtered Uber Pickups by Hour (2000m Data, Expected: 17:00 to 00:00)", 
+                                "lightgreen")
+```
+We are left with only rows with the desired time range!
+
+### Creating 15-Minute Intervals
+We're grouping the `timestamp` data into 15-minute intervals to make it easier to spot patterns and trends in Uber pickups. This lets us count how many pickups happen in each time block, helping us better understand demand and predict future activity.
+
+This action is critical because our test data is already divided into 15-minute intervals, so we need to apply the same approach to our training data to ensure consistency. By creating the number_of_pickups feature (the label), we align both datasets in terms of granularity, enabling the model to learn from the training data and make accurate predictions on the test data.
+
+The function takes a dataset as input, creates the 15-minute time intervals, and calculates the pickup counts per interval:
+```{r}
+create_pickup_counts <- function(data) {
+  pickup_counts <- data %>%
+    mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
+    group_by(time_interval) %>%
+    summarise(number_of_pickups = n())
+
+  return(pickup_counts)
+}
+```
+
+```{r}
+# Use the function for 1000m data
+pickup_counts_1000m <- create_pickup_counts(train_filtered_1000m_data)
+pickup_counts_1000m
+```
+
+```{r}
+# Use the function for 2000m data
+pickup_counts_2000m <- create_pickup_counts(train_filtered_2000m_data)
+pickup_counts_2000m
+```
+
+```{r time_intervals}
+create_time_intervals <- function(data, pickup_counts) {
+  # Join the pickup counts back to the original data to include all columns
+  data_with_intervals <- data %>%
+    mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
+    left_join(pickup_counts, by = "time_interval") %>%
+    mutate(time_interval = as.POSIXct(time_interval, format = "%Y-%m-%d %H:%M:%S", tz = "UTC"))
+  
+  return(data_with_intervals)
+}
+```
+
+```{r}
+# Apply the function to the 1000-meter filtered data
+train_filtered_1000m_data <- create_time_intervals(train_filtered_1000m_data, pickup_counts_1000m)
+
+train_filtered_1000m_data
+```
+
+```{r}
+# Apply the function to the 2000-meter filtered data
+train_filtered_2000m_data <- create_time_intervals(train_filtered_2000m_data, pickup_counts_2000m)
+
+train_filtered_2000m_data
+```
+
+Visualization that shows top 10 pickup counts for both the 1000-meter and 2000-meter filtered data:
+```{r}
+plot_top_10_pickup_intervals <- function(data, title, color) {
+  # Arrange the data to get the top 10 intervals with the highest pickup counts
+  top_10_pickups <- data %>%
+    arrange(desc(number_of_pickups)) %>%
+    head(10)
+  
+  # Convert time_interval to a character with both date and time format
+  top_10_pickups <- top_10_pickups %>%
+    mutate(time_interval = format(time_interval, "%Y-%m-%d %H:%M"))
+  
+  # Plot the top 10 intervals
+  ggplot(top_10_pickups, aes(x = time_interval, y = number_of_pickups)) +
+    geom_bar(stat = "identity", fill = color, width = 0.6) + # Adjust width for spacing
+    labs(title = title,
+         x = "Time Interval",
+         y = "Pickup Counts") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10), # Adjust text angle and size
+      axis.text.y = element_text(size = 10),
+      plot.margin = margin(t = 10, r = 10, b = 50, l = 10)          # Increase bottom margin
+    ) +
+    scale_x_discrete(labels = function(x) str_wrap(x, width = 10))  # Wrap the x-axis labels for better spacing
+}
+```
+
+```{r}
+# Plot for 1000-meter filtered data (lightblue color)
+plot_top_10_pickup_intervals(pickup_counts_1000m, "Top 10 Pickup Intervals (1000m Radius)", "lightblue")
+```
+1000-meter Radius:
+
+* The pickup counts in the top 10 intervals are around 150-175 pickups per interval.
+* The busiest intervals span across different dates, showing a peak around July 15, 2014, with pickups happening consistently between 17:45 and 18:30 on several days.
+* This indicates that Uber demand was high around these specific dates and times near the Empire State Building within a 1000-meter radius.
+
+```{r}
+# Plot for 2000-meter filtered data (lightgreen color)
+plot_top_10_pickup_intervals(pickup_counts_2000m, "Top 10 Pickup Intervals (2000m Radius)", "lightgreen")
+```
+2000-meter Radius:
+
+* The pickup counts in the top 10 intervals are significantly higher, around 500 pickups per interval.
+* The busiest intervals are mostly concentrated on September 6, 2014, with intervals spanning between 17:15 and 23:30.
+* This shows that the Uber demand beyond a 2000-meter radius from the Empire State Building was much higher on that specific date, indicating a spike in activity.
+
+### Data Cleaning
+
+#### Dealing with NAs
+Check for NA in the datasets:
+```{r}
+# Function to count NAs for each column in the dataset
+count_nas_per_column <- function(data) {
+  na_counts <- sapply(data, function(col) sum(is.na(col)))
+  return(na_counts)
+}
+```
+
+```{r}
+# For 1000m data
+nas_1000m <- count_nas_per_column(train_filtered_1000m_data)
+print("NA counts for 1000m data:")
+print(nas_1000m)
+```
+
+```{r}
+# For 2000m data
+nas_2000m <- count_nas_per_column(train_filtered_2000m_data)
+print("NA counts for 2000m data:")
+print(nas_2000m)
+
+```
+
+```{r NAs}
+# Check for NA values in the 1000m data
+na_count_1000m <- sum(is.na(train_filtered_1000m_data))
+print(paste("Number of NA values in 1000m data:", na_count_1000m))
+
+# Check for NA values in the 2000m data
+na_count_2000m <- sum(is.na(train_filtered_2000m_data))
+print(paste("Number of NA values in 2000m data:", na_count_2000m))
+```
+There is no NAs in both of the filtered data sets!
+
+#### Dealing with errors in the data
+Check that there are no errors in timestamps (like invalid days, months, hours, minutes, or seconds):
+```{r errors}
+check_invalid_timestamps <- function(data) {
+  # Extract the individual components from the timestamp and check for invalid values
+  invalid_dates <- data %>%
+    mutate(
+      year = year(timestamp),
+      month = month(timestamp),
+      day = day(timestamp),
+      hour = hour(timestamp),
+      minute = minute(timestamp),
+      second = second(timestamp)
+    ) %>%
+    filter(month > 12 | day > 31 | hour > 23 | minute > 59 | second > 59)
+  
+  # Print the results
+  if (nrow(invalid_dates) > 0) {
+    print("Invalid timestamps found:")
+    print(invalid_dates)
+  } else {
+    print("All timestamps are valid.")
+  }
+}
+```
+
+```{r}
+# Check for invalid timestamps in the 1000m data
+cat("For 1000m data:\n")
+check_invalid_timestamps(train_filtered_1000m_data)
+```
+
+```{r}
+# Check for invalid timestamps in the 2000m data
+cat("For 2000m data:\n")
+check_invalid_timestamps(train_filtered_2000m_data)
+```
+
+Check if all the dates in the timestamp column are within the correct range (April 1, 2014, to September 9, 2014):
+When all timestamps are within the correct range - it means that the range of the time intervals is correct as well because it based on it
+
+```{r}
+# Function to check if timestamps are within a valid range
+check_date_range <- function(data, start_date, end_date) {
+  # Filter for invalid dates outside the specified range
+  invalid_dates <- data %>%
+    filter(timestamp < start_date | timestamp > end_date)
+  
+  # Check and print results
+  if (nrow(invalid_dates) > 0) {
+    cat("Invalid timestamps found:\n")
+    print(invalid_dates)
+  } else {
+    cat("All timestamps are within the correct range.\n")
+  }
+}
+```
+
+```{r}
+# Define the valid date range
+start_date <- as.POSIXct("2014-04-01 00:00:00", tz = "UTC")
+end_date <- as.POSIXct("2014-09-09 23:59:59", tz = "UTC")
+```
+
+```{r}
+# Check for the 1000m data
+cat("For 1000m data:\n")
+check_date_range(train_filtered_1000m_data, start_date, end_date)
+```
+
+```{r}
+# Check for the 2000m data
+cat("For 2000m data:\n")
+check_date_range(train_filtered_2000m_data, start_date, end_date)
+
+```
+
+```{r}
+# Check the range of the time_interval in the 1000m data
+range(train_filtered_1000m_data$timestamp)
+```
+
+```{r}
+# Check the range of the time_interval in the 2000m data
+range(train_filtered_2000m_data$timestamp)
+```
+
+Check for errors in Latitude (lat) & Longitude (lon):
+
+1. Latitude values should range between -90 and 90 (since latitude represents how far north or south a location is from the equator).
+
+2.Longitude values should range between -180 and 180 (since longitude represents how far east or west a location is from the prime meridian).
+
+```{r}
+# Function to check for errors in 'lat', 'lon', and 'base'
+check_lat_lon <- function(data) {
+  # Filter for invalid latitude, longitude, or missing base
+  invalid_data <- data %>%
+    filter(lat < -90 | lat > 90 | 
+           lon < -180 | lon > 180)
+  
+  # Check and print results
+  if (nrow(invalid_data) > 0) {
+    cat("Invalid latitude or longitude:\n")
+    print(invalid_data)
+  } else {
+    cat("All lat & lon values are valid.\n")
+  }
+}
+```
+
+```{r}
+# Check for the 1000m data
+cat("For 1000m data:\n")
+check_lat_lon(train_filtered_1000m_data)
+```
+
+```{r}
+# Check for the 2000m data
+cat("For 2000m data:\n")
+check_lat_lon(train_filtered_2000m_data)
+```
+
+Check for errors in Base code:
+Function to list all unique bases:
+```{r}
+list_unique_bases <- function(data) {
+  unique_bases <- unique(data$base)
+  return(unique_bases)
+}
+```
+
+```{r}
+# List unique bases in the 1000m dataset
+unique_bases_1000m <- list_unique_bases(train_filtered_1000m_data)
+print("Unique base codes in the 1000m dataset:")
+print(unique_bases_1000m)
+```
+
+```{r}
+# List unique bases in the 2000m dataset
+unique_bases_2000m <- list_unique_bases(train_filtered_2000m_data)
+print("Unique base codes in the 2000m dataset:")
+print(unique_bases_2000m)
+```
+
+```{r}
+# Function to compare unique bases between two datasets
+compare_unique_bases <- function(bases_1000m, bases_2000m) {
+  
+  # Check if both sets have the same items
+  same_bases <- setequal(bases_1000m, bases_2000m)
+  
+  if (same_bases) {
+    print("Both 1000m and 2000m datasets have the same unique bases.")
+  } else {
+    print("The 1000m and 2000m datasets have different unique bases.")
+    
+    # Identify the bases that are in 1000m but not in 2000m
+    diff_1000m <- setdiff(bases_1000m, bases_2000m)
+    if (length(diff_1000m) > 0) {
+      print("Bases present in 1000m but not in 2000m:")
+      print(diff_1000m)
+    }
+    
+    # Identify the bases that are in 2000m but not in 1000m
+    diff_2000m <- setdiff(bases_2000m, bases_1000m)
+    if (length(diff_2000m) > 0) {
+      print("Bases present in 2000m but not in 1000m:")
+      print(diff_2000m)
+    }
+  }
+}
+
+# Run the function to compare unique bases
+compare_unique_bases(unique_bases_1000m, unique_bases_2000m)
+```
+We used: https://www.nyc.gov/assets/tlc/downloads/pdf/trip_record_user_guide.pdf to find the Base Name:
+B02598 - HINTER LLC 
+B02617 - WEITER LLC
+B02682 - SCHMECKEN LLC
+B02764 - DANACH-NY,LLC
+B02512 - UNTER LLC
+
+* It appears that all the base codes in the dataset are properly identified and correspond to valid base names, suggesting that there are no meaningless or invalid codes. Each base code is linked to a registered entity.
+
+* The base names seem to be associated with different companies, but the names themselves may not directly provide information about the service type or location.
+
+Lets look at the bases in everyday:
+```{r}
+# Function to count and plot the number of rows for each base, with labels on top of each bar
+plot_base_counts <- function(data, title, fill_color) {
+  # Count the number of rows for each base
+  base_counts <- data %>%
+    group_by(base) %>%
+    summarise(num_rows = n()) %>%
+    arrange(desc(num_rows))
+  
+  # Create the bar plot
+  ggplot(base_counts, aes(x = reorder(base, -num_rows), y = num_rows)) +
+    geom_bar(stat = "identity", fill = fill_color) +
+    geom_text(aes(label = scales::comma(num_rows)), 
+              vjust = -0.5, size = 3.5) +  # Add labels on top of the bars
+    labs(title = title,
+         x = "Base",
+         y = "Number of Rows") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_y_continuous(labels = scales::comma)  # Add comma format to avoid scientific notation
+}
+```
+
+```{r}
+# Apply the function to the 1000m dataset
+plot_base_counts(train_filtered_1000m_data, "Number of Rows per Base (1000m Data)", "lightblue")
+```
+
+```{r}
+# Apply the function to the 2000m dataset
+plot_base_counts(train_filtered_2000m_data, "Number of Rows per Base (2000m Data)", "lightgreen")
+```
+
+```{r}
+# Function to plot timeline of Uber pickups per day for each base
+plot_base_timeline <- function(data, title) {
+  # Extract the date from the timestamp and group by base and date
+  base_daily_counts <- data %>%
+    mutate(date = as.Date(timestamp)) %>%
+    group_by(base, date) %>%
+    summarise(count_pickups_per_day = n()) %>%
+    ungroup()
+
+  # Plot the data
+  ggplot(base_daily_counts, aes(x = date, y = count_pickups_per_day, color = base, group = base)) +
+    geom_line(size = 1) +
+    labs(title = title,
+         x = "Date",
+         y = "Number of Pickups",
+         color = "Base") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+# Apply the function to your dataset
+plot_base_timeline(train_filtered_1000m_data, "Uber Pickups per Day by Base (1000m Data)")
+```
+
+```{r}
+# Apply the function to your dataset
+plot_base_timeline(train_filtered_2000m_data, "Uber Pickups per Day by Base (2000m Data)")
+```
+
+TODO - TODEL:
+```{r}
+# # Function to plot days with zero pickups for each base
+# plot_zero_pickups <- function(data, title) {
+#   # Extract the date from the timestamp and group by base and date
+#   base_daily_counts <- data %>%
+#     mutate(date = as.Date(timestamp)) %>%
+#     group_by(base, date) %>%
+#     summarise(count_pickups_per_day = n(), .groups = 'drop') 
+#   
+#   # Create a complete sequence of dates for each base to account for missing days
+#   full_date_range <- base_daily_counts %>%
+#     group_by(base) %>%
+#     tidyr::complete(date = seq(min(date), max(date), by = "day"),
+#                     fill = list(count_pickups_per_day = 0)) %>%
+#     ungroup()
+#   
+#   # Filter for rows where the number of pickups is zero
+#   zero_pickups <- full_date_range %>%
+#     filter(count_pickups_per_day == 0)
+#   
+#   # Plot the data
+#   ggplot(zero_pickups, aes(x = date, y = count_pickups_per_day, color = base, group = base)) +
+#     geom_point(size = 2) +  # Use points to mark zero pickups
+#     labs(title = title,
+#          x = "Date",
+#          y = "Zero Pickups",
+#          color = "Base") +
+#     theme_minimal() +
+#     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#     scale_y_continuous(limits = c(0, 0.1), expand = c(0, 0))  # Fix y-axis to a small range to emphasize 0 pickups
+# }
+```
+
+```{r}
+# # Apply the function to your dataset
+# plot_zero_pickups(train_filtered_1000m_data, "Days with Zero Uber Pickups per Base (1000m Data)")
+```
+
+```{r}
+# # Apply the function to your dataset
+# plot_zero_pickups(train_filtered_2000m_data, "Days with Zero Uber Pickups per Base (2000m Data)")
+```
+
+```{r}
+plot_base_usage_by_month <- function(data, data_name) {
+  # Add a 'month' column to the data for grouping by month
+  data <- data %>%
+    mutate(month = floor_date(time_interval, "month"))
+  
+  # Aggregate the data to handle duplicate time_intervals, summing the number of pickups for each base at each time interval
+  data <- data %>%
+    group_by(time_interval, base) %>%
+    summarise(number_of_pickups = sum(number_of_pickups), .groups = "drop")  # Added .groups = "drop" to avoid message
+
+  # Split data by month
+  monthly_data <- split(data, floor_date(data$time_interval, "month"))
+  
+  # Loop over each month and create a plot
+  for (month_data in monthly_data) {
+    # Get the month name for the title
+    month_name <- format(unique(floor_date(month_data$time_interval, "month")), "%B %Y")
+    
+    # Create the plot
+    p <- ggplot(month_data, aes(x = time_interval, y = number_of_pickups, color = base)) +
+      geom_line(size = 1) +  # Line plot to show usage over time
+      labs(
+        title = paste("Base Usage Over Time -", month_name, "for:", data_name),
+        x = "Time Interval",
+        y = "Number of Pickups"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+    
+    # Print the plot for the current month
+    print(p)
+  }
+}
+
+```
+
+```{r}
+plot_base_usage_by_month(train_filtered_1000m_data, "1000m data")
+```
+
+```{r}
+plot_base_usage_by_month(train_filtered_2000m_data, "2000m data")
+```
+
+```{r}
+# Function to create 6 bar plots for each base showing the sum of pickups for every day of the month
+plot_daily_pickups_by_base <- function(data, data_name, color) {
+  # Add a 'day' column to the data for grouping by day
+  data <- data %>%
+    mutate(day = floor_date(time_interval, "day"))
+  
+  # Group by base and day, and calculate the total number of pickups for each base on each day
+  daily_pickups <- data %>%
+    group_by(day, base) %>%
+    summarise(number_of_pickups = sum(number_of_pickups), .groups = "drop")
+  
+  # Split the data by base
+  base_data <- split(daily_pickups, daily_pickups$base)
+  
+  # Loop over each base and create a bar plot
+  for (base_name in names(base_data)) {
+    # Get the data for the current base
+    base_df <- base_data[[base_name]]
+    
+    # Create the bar plot
+    p <- ggplot(base_df, aes(x = day, y = number_of_pickups)) +
+      geom_bar(stat = "identity", fill = color, color = "black") +  # Bar plot
+      labs(
+        title = paste("Daily Pickups for:", data_name, "- Base", base_name),
+        x = "Day",
+        y = "Number of Pickups"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+    
+    # Print the plot for the current base
+    print(p)
+  }
+}
+```
+
+```{r}
+plot_daily_pickups_by_base(train_filtered_1000m_data, "1000m data", "lightblue")
+```
+```{r}
+plot_daily_pickups_by_base(train_filtered_2000m_data, "2000m data", "lightgreen")
+```
+
+For both 1000m and 2000m data:
+* Base B02764 and B02512 have a significantly lower number of Uber pickups compared to the other bases. This pattern is consistent in both datasets.
+
+* Despite the lower overall pickup counts, there is Uber representative from each of the bases in each of the months and days. Each base, including B02764 and B02512, consistently records pickups on every moth and day within the date range. This indicates that all bases are operational throughout the dataset, even though the pickup activity differs in scale.
+
+* Given the consistent activity from all bases, we conclude that all bases are relevant to our analysis. We will therefore retain all records from all bases to ensure the model captures the entire range of Uber activity across the city.
+
+```{r}
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data
+```
+
+### Remove Unnecessary Features
+In this step, we are removing unnecessary features from both the 1000m and 2000m datasets to streamline the data for modeling. Specifically, we are removing the timestamp, lat, lon, base, and dist columns, which are not needed for our predictive models. Our goal is to retain only the time_interval and number_of_pickups columns. Additionally, we ensure that each time interval appears only once (without repeats), as duplicates can distort predictions.
+
+```{r}
+# Function to remove unnecessary features and keep unique time intervals
+clean_data <- function(data) {
+  data %>%
+    select(time_interval, number_of_pickups) %>%  # Keep only relevant columns
+    distinct(time_interval, .keep_all = TRUE)  # Ensure no duplicate time intervals
+}
+```
+
+```{r}
+# Apply the function to the 1000m dataset
+train_filtered_1000m_data <- clean_data(train_filtered_1000m_data)
+train_filtered_1000m_data
+```
+
+```{r}
+# Apply the function to the 2000m dataset
+train_filtered_2000m_data <- clean_data(train_filtered_2000m_data)
+head(train_filtered_2000m_data)
+```
+
+Lets Make sure there are no duplicated time interval:
+```{r}
+# Function to get rows with duplicate time_interval values
+get_duplicate_time_intervals <- function(data, time_interval) {
+  
+  # Identify duplicate time_intervals
+  duplicate_intervals <- data[[time_interval]][duplicated(data[[time_interval]])]
+  
+  # Return only the rows that have duplicate time_intervals
+  duplicate_rows <- data[data[[time_interval]] %in% duplicate_intervals, ]
+  
+  cat("There are: ", length(duplicate_intervals), "duplicate time intervals.\n")
+  
+  return(duplicate_rows)
+}
+
+```
+
+```{r}
+duplicate_rows_1000 <- get_duplicate_time_intervals(train_filtered_1000m_data, "time_interval")
+duplicate_rows_1000 
+```
+
+```{r}
+duplicate_rows_2000 <- get_duplicate_time_intervals(train_filtered_2000m_data, "time_interval")
+duplicate_rows_2000 
+```
+
+```{r}
+duplicate_rows_test <- get_duplicate_time_intervals(test_fixed_data, "time_interval")
+duplicate_rows_test
+```
+
+### Dealing With Missing Time Intervals
+Now, we would like to see if there are missing time intervals:
+```{r}
+find_missing_time_intervals <- function(data) {
+  
+  # Define the start and end time for the sequence
+  start_time <- as.POSIXct("2014-04-01 17:00:00", tz = "UTC")
+  end_time <- as.POSIXct("2014-09-09 23:45:00", tz = "UTC")
+  
+  # Generate the full sequence of expected 15-minute intervals
+  expected_time_sequence <- seq(from = start_time, to = end_time, by = "15 min")
+  
+  # Filter the time sequence for intervals between 17:00 and 00:00 only
+  expected_time_sequence <- expected_time_sequence[
+    (format(expected_time_sequence, "%H") >= "17" & format(expected_time_sequence, "%H") <= "23") |
+    (format(expected_time_sequence, "%H") == "00" & format(expected_time_sequence, "%M") == "00" & format(expected_time_sequence, "%Y-%m-%d") != "2014-04-01")
+  ]
+  
+  # Extract unique time intervals from the actual data
+  actual_intervals <- data %>%
+    mutate(Unique_Interval = format(!!sym("time_interval"), "%Y-%m-%d %H:%M:%S")) %>%
+    distinct(Unique_Interval)
+  
+  # Find the missing intervals
+  missing_intervals <- setdiff(format(expected_time_sequence, "%Y-%m-%d %H:%M:%S"), actual_intervals$Unique_Interval)
+  
+  # Return the missing intervals in POSIXct format
+  if (length(missing_intervals) > 0) {
+    print("Missing date-time intervals:")
+    return(as.POSIXct(missing_intervals, format = "%Y-%m-%d %H:%M:%S", tz = "UTC"))
+  } else {
+    print("No missing date-time intervals.")
+    return(NULL)
+  }
+}
+```
+
+```{r}
+missing_intervals_1000 <- find_missing_time_intervals(train_filtered_1000m_data)
+missing_intervals_1000
+```
+
+```{r}
+missing_intervals_2000 <-find_missing_time_intervals(train_filtered_2000m_data)
+missing_intervals_2000
+```
+
+```{r}
+range(pickup_counts_1000m$time_interval)
+```
+
+```{r}
+range(pickup_counts_2000m$time_interval)
+```
+
+```{r}
+train_filtered_1000m_data
+```
+
+Lets add the missing time intervals into the dataset:
+```{r}
+add_missing_intervals <- function(data, missing_intervals) {
+  
+  # Create a data frame for the missing intervals with 0 pickups
+  missing_data <- data.frame(
+    time_interval = missing_intervals,    # Add the missing intervals
+    number_of_pickups = 0                 # Assign 0 pickups for each missing interval
+  )
+  
+  # Bind the missing data with the original data
+  updated_data <- rbind(data, missing_data)
+  
+  # Sort the data by time_interval to keep it in the correct order
+  updated_data <- updated_data[order(updated_data$time_interval), ]
+  
+  return(updated_data)
+}
+```
+
+```{r}
+train_filtered_1000m_data <- add_missing_intervals(train_filtered_1000m_data, missing_intervals_1000)
+train_filtered_2000m_data <- add_missing_intervals(train_filtered_2000m_data, missing_intervals_2000)
+```
+
+```{r}
+train_filtered_1000m_data
+```
+
+Lets see the rows added and that number_of_pickups is 0:
+```{r}
+train_filtered_1000m_data[train_filtered_1000m_data$number_of_pickups == 0, ]
+```
+
+```{r}
+train_filtered_2000m_data
+```
+
+```{r}
+train_filtered_2000m_data[train_filtered_2000m_data$number_of_pickups == 0, ]
+```
+
+
+## Part B: Exploratory Data Analysis (EDA)
+### 1. Data Preparation
+#### Date base data: Adding Columns
+We added in the Data Rearrangement part:
+1. number_of_pickups: this is how many pickups were is this specific 15-min interval (the label).
+
+2. dist (for the 1000m data): this is the distance from each pickup to the Empire State Building
+
+We will also add:
+1.is_weekend: Extract whether the pickup occurred on a weekday or weekend. This is important because pickup patterns often differ on weekdays versus weekends.
+
+2. is_night: binary feature to identify if the time interval is in the evening or night to capture.
+
+Add The is_weekend Feature:
+```{r adding_is_weekend}
+# Function to add 'is_weekend' feature using time_interval
+add_is_weekend <- function(data) {
+  data %>%
+    mutate(
+      is_weekend = ifelse(wday(time_interval, label = TRUE) %in% c("Sat", "Sun"), 1, 0)  # Check if it's a weekend (Saturday or Sunday)
+    )
+}
+```
+
+```{r}
+# Apply the function to the 1000m dataset
+train_filtered_1000m_data <- add_is_weekend(train_filtered_1000m_data)
+train_filtered_1000m_data
+```
+
+```{r}
+# Apply the function to the 2000m dataset
+train_filtered_2000m_data <- add_is_weekend(train_filtered_2000m_data)
+train_filtered_2000m_data
+```
+
+```{r}
+# Apply the function to the test dataset
+test_fixed_data <- add_is_weekend(test_fixed_data)
+test_fixed_data
+```
+
+Add The time_of_day Feature:
+
+Note: In this case, since our data contains times only between 17:00 and 00:00, we will adapt the time_of_day feature to reflect only the relevant periods: Evening (17:00-20:30) and Night (20:31-00:00). There will be no Afternoon or Morning periods as the data doesn't cover these hours.
+
+Function to add 'is_night' as a binary feature (0 for Evening, 1 for Night). This feature assigns a binary value based on the time of day. 
+In our case, Evening (17:00 - 20:30) is represented by 0, and Night (20:31 - 00:00) is represented by 1. 
+
+```{r}
+# Function to add 'is_night' as a binary feature (0 for Evening, 1 for Night)
+add_is_night  <- function(data) {
+  data %>%
+    mutate(
+      is_night = case_when(
+        # Evening: 17:00 - 20:30
+        hour(time_interval) == 17 ~ 0,                              
+        hour(time_interval) > 17 & hour(time_interval) < 20 ~ 0,        
+        hour(time_interval) == 20 & minute(time_interval) <= 30 ~ 0, 
+        
+        # Night: 20:31 - 00:00
+        (hour(time_interval) == 20 & minute(time_interval) > 30) |      
+        (hour(time_interval) > 20 & hour(time_interval) <= 23) ~ 1,
+        hour(time_interval) == 0 ~ 1
+      )
+    )
+}
+```
+
+```{r}
+# Apply the function to the 1000m dataset
+train_filtered_1000m_data <- add_is_night(train_filtered_1000m_data)
+train_filtered_1000m_data
+```
+
+```{r}
+# Apply the function to the 2000m dataset
+train_filtered_2000m_data <- add_is_night(train_filtered_2000m_data)
+train_filtered_2000m_data
+```
+
+```{r}
+# Apply the function to the test dataset
+test_fixed_data <- add_is_night(test_fixed_data)
+test_fixed_data
+```
+
+#### Data from the Web: External Data Integration
+
+##### Weather
+Here is a CSV of the history weather bulk for Empire State Building (40.75,-73.99) from January 01, 2014 to December 31, 2014.
+* The parameters of the data explained here: https://openweathermap.org/history-bulk
+
+```{r}
+# Load the CSV file
+weather_data <- read_csv("empire-state-weather-2014.csv")
+weather_data
+```
+
+```{r}
+# Convert the 'dt_iso' column to POSIXct format and create the new 'timestamp' column
+weather_data <- weather_data %>%
+  mutate(timestamp = as.POSIXct(dt_iso, format = "%Y-%m-%d %H:%M:%S", tz = "UTC"))
+
+# Create 'is_raining_last_hour' and 'is_snowing_last_hour' features
+weather_data <- weather_data %>%
+  mutate(is_raining_last_hour = ifelse(!is.na(rain_1h) & rain_1h > 0, 1, 0),
+         is_snowing_last_hour = ifelse(!is.na(snow_1h) & snow_1h > 0, 1, 0))
+
+weather_data
+```
+
+Code to Check Minutes and Seconds in Timestamps:
+```{r}
+# Filter rows where the minute or second is not 0
+non_zero_minute_or_second <- weather_data %>%
+  filter(minute(timestamp) != 0 | second(timestamp) != 0)
+
+# Check if there are any rows with non-zero minute or second values
+if (nrow(non_zero_minute_or_second) > 0) {
+  print("Rows with non-zero minutes or seconds found:")
+  print(non_zero_minute_or_second)
+} else {
+  print("All timestamps have 0 for both minutes and seconds.")
+}
+```
+
+We have confirmed that the weather data is recorded at exact hourly intervals, meaning the data is consistent without variations in the minutes or seconds. To merge this data with our Uber pickup data, we need to ensure our timestamps align correctly. Since the weather information is relevant for each hour as recorded, we will always round the Uber pickup timestamps down to the current hour to maintain accuracy and ensure a seamless merge.
+
+Additionally, to reflect the hourly nature of the data, we will rename the timestamp column to hourly_time_interval to indicate that it represents the start of each hour.
+
+```{r}
+# Rename the 'timestamp' column to 'hourly_time_interval'
+weather_data <- weather_data %>%
+  rename(hourly_time_interval = timestamp)
+
+# Check the first few rows to verify the change
+head(weather_data)
+```
+
+```{r}
+range(weather_data$hourly_time_interval)
+```
+
+```{r}
+range(train_filtered_1000m_data$time_interval)
+```
+
+```{r}
+range(train_filtered_2000m_data$time_interval)
+```
+
+```{r}
+range(test_fixed_data$time_interval)
+```
+
+The weather_data dataset spans from 2014-01-01 00:00:00 to 2014-12-31 23:00:00, covering the entire time range present in both the training and test data.
+
+We combine weather data (temperature, humidity, wind speed, and snow indication) with the Uber pickup data (1000m and 2000m datasets) using the hourly_time_interval as the key. We round all Uber pickup timestamps (i.e., the time_interval) down to the current hour to match the weather data, which is recorded at one-hour intervals. This approach ensures that the weather conditions are consistently matched with the Uber pickup data at the appropriate hourly time.
+
+We are using a function called rounded_timestamp that adds a new feature to the Uber pickup datasets. This feature rounds the time_interval according to the following rules: if the time_interval has minutes of 00 or 15, it is rounded down to the current hour; if it has minutes of 30 or 45, it is rounded up to the next hour. This ensures that the Uber pickup data aligns with the hourly_time_interval in the weather data, which is recorded at one-hour intervals.
+```{r}
+# Function to round the time_interval and ensure it's in POSIXct format
+rounded_timestamp <- function(df) {
+  df %>%
+    mutate(
+      rounded_timestamp = case_when(
+        minute(time_interval) %in% c(30, 45) ~ as.POSIXct(ceiling_date(time_interval, "hour"), tz = "UTC"),
+        minute(time_interval) %in% c(0, 15) ~ as.POSIXct(floor_date(time_interval, "hour"), tz = "UTC")
+      )
+    )
+}
+
+```
+
+
+```{r}
+# Round time_interval for 1000m data
+train_filtered_1000m_data <- rounded_timestamp(train_filtered_1000m_data)
+train_filtered_1000m_data
+```
+
+```{r}
+# Round time_interval for 2000m data
+train_filtered_2000m_data <- rounded_timestamp(train_filtered_2000m_data)
+train_filtered_2000m_data
+```
+
+```{r}
+# Round time_interval for test data
+test_fixed_data <- rounded_timestamp(test_fixed_data)
+test_fixed_data
+```
+
+```{r}
+weather_data
+```
+
+We will make sure there are no duplicates in the data:
+```{r}
+get_duplicate_time_intervals(weather_data, "hourly_time_interval")
+```
+
+Lets drop the duplicates so that the merge with our data wont get duplicates as well:
+```{r}
+# Function to drop duplicates based on the time_interval
+drop_duplicate_time_intervals <- function(data, time_interval) {
+  
+  # Remove duplicates based on the specified time_interval column, keeping the first occurrence
+  data_deduplicated <- data[!duplicated(data[[time_interval]]), ]
+  
+  cat("Duplicates removed. Remaining rows: ", nrow(data_deduplicated), "\n")
+  
+  return(data_deduplicated)
+}
+```
+
+```{r}
+weather_data <- drop_duplicate_time_intervals(weather_data, "hourly_time_interval")
+```
+
+```{r}
+get_duplicate_time_intervals(weather_data, "hourly_time_interval")
+```
+
+```{r}
+weather_data
+```
+
+Select the Required Columns from the Weather Data:
+```{r}
+# Select only the required columns from the weather data
+weather_data_selected <- weather_data %>%
+  select(hourly_time_interval, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour)
+```
+
+```{r}
+weather_data_selected
+```
+
+The features we added:
+Snow (is_snowing_last_hour): It is highly unlikely to have snow in New York in September. Therefore, the feature related to snow is most likely irrelevant to our prediction task and can be excluded.
+From google: While it's possible to snow as early as November and as late as April, snowfall in these months is extremely unlikely. Snowfall is certainly not of concern from May through October, outside of the extremely rare occurrence.
+
+Rain (is_raining_last_hour): Although rain can influence Uber demand, we might want to analyze the historical rainfall pattern in September. Rain may be worth considering, as rain can directly affect ride demand, especially during evening hours.
+
+Temperature-related features (temp, feels_like): These are usually relevant, as weather conditions influence how people choose transportation. Extreme heat or cold can increase ride demand, especially in a city like New York where people walk frequently.
+
+Wind speed: This might be a secondary factor, but high winds could discourage people from walking, increasing the need for Uber. It's typically not a major predictor, but we can keep it initially and see if the data shows any correlation.
+
+Cloud cover (clouds_all): Cloud cover is usually not a direct predictor of Uber rides unless it is related to rain. If cloud cover in September was consistent or didn't vary significantly, this feature could be less useful.
+
+Humidity: Humidity could play a role, but its relevance is usually secondary compared to other weather factors like rain or temperature.
+
+```{r}
+train_filtered_1000m_data
+```
+
+```{r}
+duplicate_rows_1000 <- get_duplicate_time_intervals(train_filtered_1000m_data, "time_interval") 
+duplicate_rows_1000
+```
+
+Merging Weather Data with 1000m & 2000m & test Data Based on rounded_timestamp and hourly_time_interval:
+```{r}
+# Merge the weather data with the 1000m dataset using 'rounded_timestamp' and 'hourly_time_interval'
+train_filtered_1000m_data <- train_filtered_1000m_data %>%
+  left_join(weather_data_selected, by = c("rounded_timestamp" = "hourly_time_interval"))
+
+train_filtered_1000m_data
+```
+
+```{r}
+get_duplicate_time_intervals(train_filtered_1000m_data, "time_interval")
+```
+
+
+```{r}
+# Merge the weather data with the 2000m dataset using 'rounded_timestamp' and 'hourly_time_interval'
+train_filtered_2000m_data <- train_filtered_2000m_data %>%
+  left_join(weather_data_selected, by = c("rounded_timestamp" = "hourly_time_interval"))
+
+# Check the first few rows of the updated 2000m dataset
+head(train_filtered_2000m_data)
+```
+
+```{r}
+# Merge the weather data with the test dataset using 'rounded_timestamp' and 'hourly_time_interval'
+test_fixed_data <- test_fixed_data %>%
+  left_join(weather_data_selected, by = c("rounded_timestamp" = "hourly_time_interval"))
+
+# Check the first few rows of the updated 2000m dataset
+head(test_fixed_data)
+```
+
+Notes:
+* Merging Based on hourly_time_interval: The weather data uses hourly_time_interval as its timestamp, while the Uber data uses rounded_timestamp, which we created to match the hourly granularity of the weather data.
+
+* Preserving All Rows from Uber Data: We use a left_join, which ensures that all rows from train_filtered_1000m_data and train_filtered_2000m_data are preserved. If there is no matching weather data for a given rounded_timestamp, the weather columns will contain NA.
+
+* No Additional Rows from Weather Data: The weather data is not expanded to include extra rows in the Uber pickup datasets. Only the relevant weather columns are added to the existing rows in the Uber data.
+
+##### Crashes
+Here we will add data about motor vehicle collisions in New York City: https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95/about_data. By incorporating data from the Motor Vehicle Collisions - Crashes dataset, we aim to capture how traffic accidents may impact Uber demand. Traffic congestion and accidents can lead to delays or reduced availability of Uber vehicles in certain areas, affecting both the supply of drivers and the demand for rides.
+
+After pre-processing we did on the raw data we fot two CSV files (crashes_sums_1000m.csv and crashes_sums_2000m.csv) that contain crash data within and above a 1000-meter and 2000-meter radius of the Empire State Building, respectively. The columns include:
+* crash_time_15min: The timestamp for each 15-minute interval.
+* number_of_persons_injured: The number of people injured in crashes within that time interval.
+* number_of_persons_killed: The number of people killed in crashes within that time interval.
+* number_of_crashes: The total number of crashes occurring within that time interval.
+
+How This Data Can Be Helpful for Predictions:
+1. Traffic Impact on Uber Demand:
+High numbers of crashes, especially those causing injuries or fatalities, could lead to significant traffic disruptions. These disruptions may reduce the number of available Uber vehicles, or create increased demand as people opt for ride-hailing services over other transportation options.
+By correlating the crash data with Uber pickup data, you may notice patterns where crash events (even within specific time intervals) affect demand. This correlation could provide valuable insight for predicting Uber demand, particularly during peak traffic hours or in highly trafficked areas.
+
+2. Safety Concerns:
+Time periods or areas with higher crash rates might temporarily reduce Uber ridership as people become more cautious about traveling, potentially affecting demand patterns.
+By including this crash data, you can capture these safety concerns and measure their influence on demand.
+
+3. Modeling the Impact:
+By incorporating the number_of_persons_injured, number_of_persons_killed, and number_of_crashes features from this crash data, you can directly account for the effect of accidents on Uber demand.
+Crashes can be treated as external factors contributing to demand variability. In your model, you can test how these variables affect demand forecasting, which could provide more accurate predictions, especially in periods with high crash activity.
+```{r load_data}
+crashes_sums_1000m <- read.csv("crashes_sums_1000m.csv")
+crashes_sums_2000Am <- read.csv("crashes_sums_2000Am.csv")
+```
+
+```{r}
+crashes_sums_1000m
+```
+
+```{r}
+crashes_sums_2000Am
+```
+
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(train_filtered_1000m_data, "crash_time_15min") 
+```
+```{r}
+get_duplicate_time_intervals(train_filtered_2000m_data, "crash_time_15min") 
+```
+
+fix crash_time_15min format:
+(We will use a general function that can be useful in the future)
+```{r}
+convert_time_to_datetime <- function(data, time_column) {
+  data %>%
+    mutate(!!time_column := as.POSIXct(!!sym(time_column), format = "%Y-%m-%d %H:%M:%S", tz = "UTC"))
+}
+```
+
+```{r}
+# Usage for 1000m crash data
+crashes_sums_1000m <- convert_time_to_datetime(crashes_sums_1000m, "crash_time_15min")
+crashes_sums_1000m
+```
+
+```{r}
+# Usage for 2000m crash data
+crashes_sums_2000Am <- convert_time_to_datetime(crashes_sums_2000Am, "crash_time_15min")
+crashes_sums_2000Am
+```
+
+Checking time range:
+```{r}
+range(crashes_sums_1000m$crash_time_15min)
+```
+
+```{r}
+range(crashes_sums_2000Am$crash_time_15min)
+```
+
+Here we will merge the crash data features with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join where crash_time_15min = time_interval:
+```{r}
+# Function to merge crash data with train or test data
+merge_crash_data <- function(data, crash_data) {
+  data %>%
+    left_join(crash_data, by = c("time_interval" = "crash_time_15min"))
+}
+```
+
+```{r}
+# Merge crash data with the 1000m Uber dataset
+train_filtered_1000m_data <- merge_crash_data(train_filtered_1000m_data, crashes_sums_1000m)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge crash data with the 2000m Uber dataset
+train_filtered_2000m_data <- merge_crash_data(train_filtered_2000m_data, crashes_sums_2000Am)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge crash data with the test Uber dataset
+test_fixed_data <- merge_crash_data(test_fixed_data, crashes_sums_1000m)
+test_fixed_data
+```
+
+##### Events
+Here we will add data about NYC Permitted Events (https://data.cityofnewyork.us/City-Government/NYC-Permitted-Event-Information-Historical/bkfu-528j/about_data), which include all types of public events that have received a permit from the city. These events range from parades, block parties, concerts, and street fairs to film shoots and other public gatherings that occur throughout the city. This data, after some pre-processing we did includes the number of events that occurred in specific time intervals, which could influence Uber ride demand, as larger events may cause an increase in ride requests due to the influx of people.
+
+The event data includes the following columns:
+* time_interval: The 15-minute interval when the events occurred, which allows us to track event activity over time.
+* event_count: The number of events happening during that specific 15-minute interval. Higher event counts may indicate more activity and potentially greater Uber demand.
+
+Types of events covered in this data include:
+* Parades: City-wide or borough-specific parades that often require road closures and generate significant foot traffic.
+* Street Fairs: Neighborhood fairs that can cause localized congestion and boost demand for transportation services.
+* Film Shoots: Movie or TV productions that can lead to street closures or restricted access.
+* Concerts and Festivals: Major events that attract large crowds and could cause spikes in Uber demand before and after the event.
+* Block Parties: Local gatherings that block off residential streets, possibly leading to increased Uber rides in and out of the area.
+
+This information can help our model predictions by accounting for:
+* Increased Demand: Major events often lead to spikes in transportation demand, particularly at the start and end times of events.
+* Traffic Disruptions: Some events involve street closures or restrictions, which may cause delays or alter Uber routes, potentially reducing the number of available rides in the area.
+* Predicting Demand Patterns: By incorporating event data into our model, we can identify patterns where Uber demand surges during large gatherings or city-wide celebrations, which helps improve the accuracy of our pickup predictions around the Empire State Building and surrounding areas.
+
+```{r load_data}
+nyc_event_counts <- read.csv("nyc_event_counts.csv")
+nyc_event_counts
+```
+
+fix the time interval format:
+```{r}
+nyc_event_counts <- convert_time_to_datetime(nyc_event_counts, "time_interval")
+nyc_event_counts
+```
+
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(nyc_event_counts, "time_interval") 
+```
+
+Checking time range:
+```{r}
+range(nyc_event_counts$time_interval)
+```
+
+Here we will merge the nyc_event_counts dataset with train_filtered_1000m_data, train_filtered_2000m_data, and test_fixed_data using a left_join on the time_interval column:
+```{r}
+# Function to merge event data with train or test data
+merge_event_data <- function(data, event_data) {
+  data %>%
+    left_join(event_data, by = "time_interval")
+}
+```
+
+```{r}
+# Merge event data with train_filtered_1000m_data
+train_filtered_1000m_data <- merge_event_data(train_filtered_1000m_data, nyc_event_counts)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge event data with train_filtered_2000m_data
+train_filtered_2000m_data <- merge_event_data(train_filtered_2000m_data, nyc_event_counts)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge event data with test_fixed_data
+test_fixed_data <- merge_event_data(test_fixed_data, nyc_event_counts)
+test_fixed_data
+```
+
+##### Yellow Taxis
+We incorporated data from the NYC Yellow Taxi Trip Records, which provides detailed information on taxi trips across New York City. This data is publicly available and can be accessed from the NYC Taxi & Limousine Commission (TLC): https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page.
+The raw data includes details such as pickup and drop-off times, pickup and drop-off locations, fare amounts, distance traveled, and more.
+
+To align the Yellow Taxi data with our Uber pickup predictions, we performed the following preprocessing steps:
+
+* 15-Minute Time Intervals: We grouped the pickup times into 15-minute intervals to standardize the data. This allows us to compare Uber and Yellow Taxi demand on the same time scale, making it easier to identify patterns and trends in transportation demand.
+* Pickup Count: For each 15-minute interval, we counted the number of yellow taxi pickups, providing a pickup_count feature for each time block. This pickup count represents the total number of taxi rides that started within that 15-minute period.
+* Geographical Filtering: We split the data into two separate datasets:
+1. Within 1000 meters: Data representing taxi pickups that occurred within a 1000-meter radius from the Empire State Building.
+2. Above 2000 meters: Data representing taxi pickups that occurred more than 2000 meters away from the Empire State Building.
+
+Merging yellow taxi data with Uber pickup data can improve Uber ride predictions in several ways:
+* Substitute Transportation: When yellow taxi pickups increase, Uber demand may decrease as passengers choose taxis. This helps model shifts between transportation modes for more accurate predictions.
+* Complementary Demand: Both Uber and taxis may see increased demand during busy periods (events, weather, holidays). Combining these datasets captures overall transportation trends more effectively.
+* Traffic & Supply: High taxi activity can signal traffic or a larger supply of vehicles, affecting Uber availability and demand.
+```{r load_data}
+yellow_taxis_1000m <- read.csv("yellow_taxis_pickup_counts_1000m.csv")
+yellow_taxis_2000Am <- read.csv("yellow_taxis_pickup_counts_2000Am.csv")
+```
+
+```{r}
+yellow_taxis_1000m
+```
+
+```{r}
+yellow_taxis_2000Am
+```
+
+fix crash_time_15min format:
+```{r}
+# Usage for 1000m crash data
+yellow_taxis_1000m <- convert_time_to_datetime(yellow_taxis_1000m, "pickup_time_15min")
+yellow_taxis_1000m
+```
+
+```{r}
+# Usage for 2000m crash data
+yellow_taxis_2000Am <- convert_time_to_datetime(yellow_taxis_2000Am, "pickup_time_15min")
+yellow_taxis_2000Am
+```
+
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(yellow_taxis_1000m, "pickup_time_15min") 
+```
+
+```{r}
+get_duplicate_time_intervals(yellow_taxis_2000Am, "pickup_time_15min") 
+```
+
+Checking time range:
+```{r}
+range(yellow_taxis_1000m$pickup_time_15min)
+```
+
+```{r}
+range(yellow_taxis_2000Am$pickup_time_15min)
+```
+For our convenience, we will rename the pickup_count column to taxis_pickup_count:
+```{r}
+# Function to rename 'pickup_count' to 'taxis_pickup_count'
+rename_pickup_count <- function(data) {
+  data %>%
+    rename(taxis_pickup_count = pickup_count)
+}
+```
+
+```{r}
+# Apply the function to the datasets
+yellow_taxis_1000m <- rename_pickup_count(yellow_taxis_1000m)
+yellow_taxis_2000Am <- rename_pickup_count(yellow_taxis_2000Am)
+```
+
+```{r}
+yellow_taxis_1000m
+```
+
+```{r}
+yellow_taxis_2000Am
+```
+
+Here we will merge the yellow taxis data pickup count with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join where pickup_time_15min = time_interval:
+```{r}
+# Function to merge yellow taxis data with train or test data
+merge_taxis_data <- function(data, yellow_taxis_data) {
+  data %>%
+    left_join(yellow_taxis_data, by = c("time_interval" = "pickup_time_15min"))
+}
+```
+
+```{r}
+# Merge yellow_taxis data with the 1000m Uber dataset
+train_filtered_1000m_data <- merge_taxis_data(train_filtered_1000m_data, yellow_taxis_1000m)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge yellow_taxis data with the 2000m Uber dataset
+train_filtered_2000m_data <- merge_taxis_data(train_filtered_2000m_data, yellow_taxis_2000Am)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge yellow_taxis data with the test Uber dataset
+test_fixed_data <- merge_taxis_data(test_fixed_data, yellow_taxis_1000m)
+test_fixed_data
+```
+
+##### Arrests
+The dataset contains information about arrests made by the NYPD (https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data-Historic-/8h9b-rp9u/about_data), categorized by date, felony counts, misdemeanor counts, and total arrests. After preprocessing, we split the data into two categories: arrests within a 1000-meter radius of the Empire State Building and those occurring beyond 2000 meters. 
+
+Explanation of Features:
+* arrest_date: The specific date on which the arrests were made.
+* felony_count: The number of felony arrests made on that day.
+* misdemeanor_count: The number of misdemeanor arrests made on that day.
+* total_arrests: The total number of arrests (felony + misdemeanor) made on that day.
+
+How Merging This Data Can Help Final Predictions:
+* Crime and Public Perception: High arrest counts, especially for felonies, may deter people from certain areas, lowering Uber demand. Fewer arrests could suggest a safer environment, increasing ridership.
+* Traffic Disruptions: Large-scale arrests can lead to roadblocks, affecting transportation. This helps us model how such events impact Uber availability and wait times.
+* Safety and Demand Correlation: Arrest data helps us understand how safety concerns affect Uber demand, improving prediction accuracy during high-crime periods.
+* Geographical Impact: Splitting the data into 1000-meter and 2000-meter categories allows us to better understand how crime near the Empire State Building influences Uber demand.
+```{r load_data}
+arrests_1000m <- read.csv("arrests_F_and_M_1000m.csv")
+arrests_2000Am <- read.csv("arrests_F_and_M_2000Am.csv")
+```
+To avoid reaching a state of complete multicollinearity, you can remove both felony_count and misdemeanor_count, keeping only total_arrests for your predictions. This will ensure that the model does not suffer from redundancy due to the perfect correlation between total_arrests, felony_count, and misdemeanor_count.
+```{r}
+# Function to remove 'felony_count' and 'misdemeanor_count' from the dataset
+clean_arrest_data <- function(data) {
+  # Remove 'felony_count' and 'misdemeanor_count' columns
+  data_cleaned <- data %>%
+    select(-felony_count, -misdemeanor_count)
+  
+  # Return the cleaned dataset
+  return(data_cleaned)
+}
+```
+
+```{r}
+arrests_1000m <- clean_arrest_data(arrests_1000m)
+arrests_2000Am <- clean_arrest_data(arrests_2000Am)   
+```
+
+```{r}
+arrests_1000m
+```
+
+```{r}
+arrests_2000Am
+```
+
+Duplicate time check:
+```{r}
+get_duplicate_time_intervals(arrests_1000m, "arrest_date") 
+```
+
+```{r}
+get_duplicate_time_intervals(arrests_2000Am, "arrest_date") 
+```
+
+Transform Daily Arrest Data to 15-Minute Intervals:
+```{r}
+
+```
+
+```{r}
+# Function to replicate daily arrests data across all 15-minute intervals in each day
+replicate_arrests_to_intervals <- function(arrests_data) {
+  # Convert the arrest_date to Date format
+  arrests_data <- arrests_data %>%
+    mutate(arrest_date = as.Date(arrest_date, format = "%Y-%m-%d"))
+  
+  # Create a sequence of 15-minute intervals for each day and replicate arrests count for each interval
+  arrests_data_15min <- arrests_data %>%
+    rowwise() %>%
+    mutate(
+      time_intervals = list(seq(
+        from = as.POSIXct(paste(arrest_date, "00:00:00"), tz = "UTC"),
+        to = as.POSIXct(paste(arrest_date, "23:45:00"), tz = "UTC"),
+        by = "15 min"
+      ))
+    ) %>%
+    unnest(cols = c(time_intervals)) %>%
+    mutate(total_arrests = total_arrests) %>%
+    select(time_interval = time_intervals, total_arrests)
+  
+  return(arrests_data_15min)
+}
+```
+
+```{r}
+# Apply the function to the datasets
+arrests_1000m <- replicate_arrests_to_intervals(arrests_1000m)
+arrests_2000Am <- replicate_arrests_to_intervals(arrests_2000Am)
+```
+
+```{r}
+arrests_1000m
+```
+
+```{r}
+arrests_2000Am
+```
+
+Checking time range:
+```{r}
+range(arrests_1000m$time_interval)
+```
+
+```{r}
+range(arrests_2000Am$time_interval)
+```
+Here we will merge the arrests data pickup with train_filtered_1000m_data & train_filtered_2000m_data & test_fixed_data using left_join by time_interval:
+```{r}
+# Function to merge yellow taxis data with train or test data
+merge_arrests_data <- function(data, arrests_data) {
+  data %>%
+    left_join(arrests_data, by = "time_interval")
+}
+```
+
+```{r}
+# Merge arrests data with the 1000m Uber dataset
+train_filtered_1000m_data <- merge_arrests_data(train_filtered_1000m_data, arrests_1000m)
+train_filtered_1000m_data
+```
+
+```{r}
+# Merge arrests data with the 2000m Uber dataset
+train_filtered_2000m_data <- merge_arrests_data(train_filtered_2000m_data, arrests_2000Am)
+train_filtered_2000m_data
+```
+
+```{r}
+# Merge arrests data with the test Uber dataset
+test_fixed_data <- merge_arrests_data(test_fixed_data, arrests_1000m)
+test_fixed_data
+```
+
+##### Holidays
+We incorporated a table of all U.S. federal holidays with their dates in 2014: https://www.kaggle.com/datasets/jeremygerdes/us-federal-pay-and-leave-holidays-2004-to-2100-csv?select=400_Years_of_Generated_Dates_and_Holidays.csv. 
+
+How Merging Holiday Data Can Help Final Predictions:
+* Impact on Uber Demand: Federal holidays often see a shift in transportation demand. Holidays typically lead to changes in commuting patterns, as fewer people commute to work and more travel for leisure, which could increase Uber demand.
+* Event-Driven Peaks: Special events, gatherings, and increased social activities on holidays can create spikes in Uber ride demand, particularly near popular locations like the Empire State Building.
+* Predicting Holiday Traffic: Including holidays allows us to predict periods of increased or decreased Uber demand based on public events or reduced commuting activity. This helps refine our predictions by accounting for known holiday effects on transportation patterns.
+
+```{r load_data}
+holidays <- read.csv("US_2014_federal_holidays.csv")
+holidays
+```
+
+We need to filter the holidays that occur between April 1, 2014, and September 30, 2014:
+```{r}
+# Convert the 'Date' column to Date format
+holidays <- holidays %>%
+  mutate(Date = as.Date(Date, format = "%Y-%m-%d"))
+
+# Filter holidays between 1st April 2014 and 30th September 2014
+holidays <- holidays %>%
+  filter(Date >= as.Date("2014-04-01") & Date <= as.Date("2014-09-30"))
+
+# View the filtered holidays
+holidays
+```
+
+The only holidays in the range of our data are: Memorial Day, Independence Day, Labor Day.
+Here's the function that adds new holiday features (Memorial Day, Independence Day, and Labor Day) to each of your datasets based on whether the time_interval falls on a specific holiday:
+```{r}
+# Function to add holiday features to a dataset
+add_holiday_features <- function(data) {
+  data %>%
+    mutate(
+      # Check if each time_interval matches the specific holiday and create a binary column for each
+      memorial_day = ifelse(format(as.Date(time_interval, tz = "UTC"), "%Y-%m-%d") == "2014-05-26", 1, 0),
+      independence_day = ifelse(format(as.Date(time_interval, tz = "UTC"), "%Y-%m-%d") == "2014-07-04", 1, 0),
+      labor_day = ifelse(format(as.Date(time_interval, tz = "UTC"), "%Y-%m-%d") == "2014-09-01", 1, 0)
+    )
+}
+```
+
+```{r}
+# Apply the function to each dataset
+train_filtered_1000m_data <- add_holiday_features(train_filtered_1000m_data)
+train_filtered_2000m_data <- add_holiday_features(train_filtered_2000m_data)
+test_fixed_data <- add_holiday_features(test_fixed_data)
+```
+
+```{r}
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data
+```
+
+```{r}
+test_fixed_data
+```
+
+If all the features-Memorial_Day, Independence_Day, and Labor_Day-are set to 0, it indicates that the date is a regular day (not a holiday).
+
+Lets remove the rounded_timestamp because its not necessary:
+```{r}
+# Function to remove the 'rounded_timestamp' column from the dataset
+remove_rounded_timestamp <- function(data) {
+  data %>%
+    select(-rounded_timestamp)
+}
+```
+
+```{r}
+train_filtered_1000m_data <- remove_rounded_timestamp(train_filtered_1000m_data)
+```
+
+```{r}
+train_filtered_2000m_data <- remove_rounded_timestamp(train_filtered_2000m_data)
+```
+
+```{r}
+test_fixed_data <- remove_rounded_timestamp(test_fixed_data)
+```
+
+
+Lets check NAs after adding new features:
+```{r}
+# For 1000m data
+nas_1000m <- count_nas_per_column(train_filtered_1000m_data)
+print("NA counts for 1000m data:")
+print(nas_1000m)
+```
+
+```{r}
+# For 2000m data
+nas_2000m <- count_nas_per_column(train_filtered_2000m_data)
+print("NA counts for 2000m data:")
+print(nas_2000m)
+```
+No NAs!
+
+```{r}
+# For test data
+nas_test <- count_nas_per_column(test_fixed_data)
+print("NA counts for test data:")
+print(nas_test)
+```
+NAs for only number_of_pickups - this is what we need to predict          
+
+```{r}
+# Assuming your table (data frame) is named 'my_table'
+# write.csv(train_filtered_1000m_data, "train_filtered_1000m_data.csv")
+# write.csv(train_filtered_2000m_data, "train_filtered_2000m_data.csv")
+```
+
+### 2. Exploratory Analysis
+1. Actions Taken on the Data (Data Cleaning and Transformation):
+Start by documenting what actions have been performed on the data:
+
+Filtered Data: Data was filtered based on distance from the Empire State Building:
+1. train_raw_data which is now called train_filtered_1000m_data table which has only data about pickups which was occurred up to 1000m radius from the Empire State Building.
+2. The train_filtered_2000m_data includes pickups from over 2000 meters away from the Empire State Building. 
+
+New Variables: The dataset includes the columns: time_interval, number_of_pickups,	is_weekend, is_night, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour, number_of_persons_injured, number_of_persons_killed, number_of_crashes, event_count, taxis_pickup_count, total_arrests, memorial_day, independence_day, labor_day  
+
+We added a lot of features, we probably won't need all of them, we'll start with dry logic and then move on to tests and observations.
+
+```{r}
+numerical_features <- c(
+  "number_of_pickups", "temp", "humidity", "wind_speed", "feels_like", 
+  "clouds_all", "number_of_persons_injured", "number_of_persons_killed", 
+  "number_of_crashes", "event_count", "taxis_pickup_count", "total_arrests"
+)
+
+numerical_features
+```
+```{r}
+categorical_features <- c("is_weekend", "is_night", "is_raining_last_hour", "is_snowing_last_hour", 
+                         "memorial_day", "independence_day", "labor_day")
+categorical_features
+```
+
+#### Looking At The Features 
+Firstly, we will use correlation analysis to:
+1. determine which features are less likely to explain or predict the number of pickups (features that have low correlation with number_of_pickups)
+2. Identify potential multicollinearity between features. Multicollinearity occurs when two or more features are highly correlated with each other. In cases of high correlation between features, one of the features can be removed to prevent redundancy and to ensure that the model does not become unstable. Reducing multicollinearity improves the interpretability of the model and ensures that the model can better distinguish the effects of different variables.
+
+
+```{r}
+# Function for correlation analysis and visualization
+create_corr_matrix <- function(data, dataset_name, numerical_features) {
+  # Select only the numerical columns specified in the numerical_features list
+  numeric_data <- data %>%
+    select(all_of(numerical_features))  # Select specified numerical columns
+
+  # Calculate correlation matrix using 'pairwise.complete.obs' to handle missing values
+  cor_matrix <- cor(numeric_data, use = "pairwise.complete.obs", method = "pearson")
+  
+  # Replace NaNs or any Inf values with NA to avoid issues
+  cor_matrix[is.na(cor_matrix)] <- NA
+  
+  # Create a correlation plot with adjusted label sizes
+  col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+  
+  # Plot the full correlation matrix (both upper and lower triangles) with adjusted font size
+  corrplot(cor_matrix, method = "color", col = col(200),  
+           type = "full", order = "original", # Display both triangles
+           tl.col = "black", tl.srt = 45, # Text label color and rotation
+           addCoef.col = "black",
+           tl.cex = 0.7, # Reduce text label size for better readability
+           number.cex = 0.5, # Adjust coefficient number size
+           na.label = "NA", # Handle NA values in the correlation plot
+           diag = FALSE, # Hide the diagonal
+           title = paste("Full Correlation Matrix -", dataset_name), # Add title
+           mar = c(0, 0, 4, 0)) # Adjust top margin for the title
+}
+```
+
+```{r}
+# plot corr mat for train_filtered_1000m_data:
+create_corr_matrix(train_filtered_1000m_data, "1000m Data", numerical_features)
+```
+
+Insights from the Correlation Matrix (1000m Data):
+1. High Correlation Between Features (Potential Multicollinearity):
+* temp and Feels_like (0.99): This strong correlation suggests redundancy. We will consider dropping one, likely feels_like, to reduce multicollinearity.
+* Clouds_all and Humidity (0.61): There's moderate correlation, indicating overlap in information. This may require further investigation but isn't critical.
+
+2. Correlation with number_of_pickups:
+* Positive Correlation:
+- Taxis_pickup_count (0.31) and Total_arrests (0.30) both show moderate positive correlations with Uber pickups, suggesting a link between higher transportation demand and arrest activity.
+* Negative Correlation:
+- Is_night (-0.50) and Is_weekend (-0.35) show significant drops in pickups during these times, signaling lower demand at night and on weekends.
+* Low Correlation:
+- Wind_speed (-0.02) and Number_of_persons_injured (0.03) have very low correlations with pickups, suggesting that these features have little impact on Uber demand. These may not be useful predictors in the model.
+
+3. Handling Missing Values (NAs):
+* number_of_persons_killed shows missing values (NAs). We will address these missing values late.
+
+4. Key Takeaways: We will focus on reducing redundancy by addressing multicollinearity, especially between temp and feels_like. Features like taxi pickups and total arrests seem to influence Uber demand, while nighttime and weekends are associated with reduced activity. Low correlation features like wind speed and number of persons injured may have little predictive power and can potentially be excluded from the model.
+
+```{r}
+# plot corr mat for train_filtered_2000m_data:
+create_corr_matrix(train_filtered_2000m_data, "2000m Data", numerical_features)
+```
+
+Insights from the Correlation Matrix (2000m Data):
+1. High Correlation Between Features (Potential Multicollinearity):
+* temp and Feels_like (0.99): This nearly perfect correlation suggests redundancy. We will likely drop feels_like to avoid multicollinearity.
+Clouds_all and Humidity (0.61): This moderate correlation indicates some overlap in information, though it is less critical.
+
+2. Correlation with number_of_pickups:
+* Positive Correlation:
+- Taxis_pickup_count (0.47) and Total_arrests (0.17) show moderate correlations, suggesting that both higher transportation demand (taxi activity) and arrest activity are associated with an increase in Uber pickups.
+- Event_count (0.37) and Number_of_crashes (0.37): Events and traffic incidents appear linked to increased demand for Uber pickups, likely due to congestion or disrupted transportation routes.
+* Low Correlation:
+- Wind_speed (-0.03) and Number_of_persons_killed (0.01) exhibit very weak correlations with pickups, suggesting little to no impact on Uber demand. These features may not be useful predictors.
+
+3. Key Takeaways: We will prioritize reducing multicollinearity by addressing the strong correlation between temp and feels_like. Features like taxi pickups, total arrests, event count, and number of crashes seem to have a clear relationship with Uber demand, making them important predictors. Conversely, low correlation features like wind speed and number of persons killed may not significantly contribute to the model and could be excluded to simplify the analysis.
+
+---------------
+What about NAs:
+The NA values in the number_of_persons_killed of the correlation matrix occur because the this feature likely contains only a constant value (like all zeros), resulting in a standard deviation of zero. Correlation cannot be computed if there is no variability in the data, which leads to NA in the correlation matrix.
+
+Why This Happens:
+Zero Variance: If a feature contains only a single value for all rows (e.g., all zeros or all NAs), its standard deviation is zero. Since correlation measures the co-movement of two variables, the absence of variability makes it impossible to compute correlation.
+Constant Feature: If all values in number_of_persons_killed are NA, R cannot compute a correlation, resulting in NA in the correlation matrix.
+We checked NA's - The first option sounds reasonable, let's check:
+```{r}
+# Define a function to check if a column has constant or NA values, and print the dataset name
+check_constant_or_na <- function(data, column_name, dataset_name) {
+  # Get the unique values from the specified column
+  unique_values <- unique(data[[column_name]])
+  
+  # Output the unique values
+  print(paste("Unique values in", column_name, "for", dataset_name, ":"))
+  print(unique_values)
+  
+  # Check if all values are NA or constant
+  if (length(unique_values) == 1 && is.na(unique_values)) {
+    print(paste("All values in", column_name, "for", dataset_name, "are NA."))
+  } else if (length(unique_values) == 1) {
+    print(paste("All values in", column_name, "for", dataset_name, "are constant:", unique_values))
+  } else {
+    print(paste("There is variability in", column_name, "for", dataset_name))
+  }
+}
+```
+
+number_of_persons_killed (this is for only 1000m dataset):
+```{r}
+# Call the function for 'number_of_persons_killed' in train_filtered_1000m_data
+check_constant_or_na(train_filtered_1000m_data, "number_of_persons_killed", "train_filtered_1000m_data")
+```
+
+We observed that all values for the 'number_of_persons_killed' feature in the 1000m datasets are constant (0).
+Therefore, We will omit this variable later in 1000m data.
+
+Since all the values in the 1000m data for the feature: 'number_of_persons_killed' are 0, we would like to check its behavior in the 2000m data:
+```{r}
+# Define a function to count and visualize the occurrences for 'number_of_persons_killed'
+plot_persons_killed_distribution <- function(data, dataset_name) {
+  # Create a table of counts for 'number_of_persons_killed'
+  counts <- as.data.frame(table(data$number_of_persons_killed))
+  
+  # Create a bar plot to visualize the distribution
+  ggplot(counts, aes(x = Var1, y = Freq)) +
+    geom_bar(stat = "identity", fill = "blue", color = "black") +
+    labs(
+      title = paste("Distribution of 'number_of_persons_killed' -", dataset_name),
+      x = "Number of Persons Killed",
+      y = "Count"
+    ) +
+    theme_minimal()
+}
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+plot_persons_killed_distribution(train_filtered_1000m_data, "train_filtered_1000m_data")
+```
+```{r}
+# Call the function for train_filtered_2000m_data
+plot_persons_killed_distribution(train_filtered_2000m_data, "train_filtered_2000m_data")
+```
+
+We can see that the "number_of_persons_killed" is very negligible in both tables. In the 1000 meter radius table, there are no persons killed at all from April to mid-September, therefore it is very likely that there will be no persons killed until the end of September.
+Negligible in the 2000 meter radius table.
+In addition, the correlation with the label "number_of_pickups" we calculated earlier for the 2000 table was also very negligible (0.014).
+In conclusion, we will remove this feature.
+
+--------
+Now, we will take a look on the catagorial features:
+We would like to see whether the effect of a categorical feature on the label (number_of_pickups) is strong or weak. We will use Box plot to visually assess the distribution of the label within each category, giving insight into whether the categorical feature significantly impacts the label.
+
+```{r}
+# Function to create box plots for each categorical feature
+plot_categorical_effect <- function(data, categorical_features, label, dataset_name, fill_color) {
+  
+  # Loop through each categorical feature
+  for (feature in categorical_features) {
+    
+    # Ensure the feature is treated as a factor (for two levels: 0 and 1)
+    data[[feature]] <- as.factor(data[[feature]])
+    
+    # Create the boxplot for each categorical feature against the label
+    p <- ggplot(data, aes_string(x = feature, y = label, fill = feature)) +  # Use fill to color the boxes by feature
+      geom_boxplot(color = "black") +
+      labs(x = feature, y = label, 
+           title = paste("Effect of", feature, "on", label, "-", dataset_name)) +
+      scale_fill_manual(values = c(fill_color, fill_color)) +  # Set custom colors for the boxes
+      theme_minimal() +
+      theme(plot.title = element_text(size = 12, hjust = 0.5, margin = margin(b = 10)),
+            axis.text.x = element_text(size = 10, angle = 0, hjust = 0.5),  # No rotation needed
+            axis.text.y = element_text(size = 10),
+            axis.title.x = element_text(size = 12),
+            axis.title.y = element_text(size = 12),
+            plot.margin = unit(c(1, 1, 1, 1), "cm"))  # Adjust margins
+    
+    # Print the plot in a new window
+    print(p)
+  }
+}
+
+```
+
+```{r}
+plot_categorical_effect(train_filtered_1000m_data, categorical_features, "number_of_pickups", "1000m Data", "lightblue")
+```
+
+```{r}
+plot_categorical_effect(train_filtered_2000m_data, categorical_features, "number_of_pickups", "2000m Data", "lightgreen")
+```
+
+We can see & learn that:
+1.is_snowing_last_hour: 
+* Has only 0 value in both datasets, this makes sense given the months covered (April to September) are not snowy months in New York City. Therefore, this feature will be omitted for both the 1000m and 2000m datasets.
+
+2. is_weekend:
+* In the 1000m data, there is a noticeable decrease in the number of pickups on weekends. Weekdays (is_weekend = 0) show a higher median and wider range of pickups compared to weekends (is_weekend = 1).
+* In the 2000m data, the effect of weekends is less pronounced, with very similar medians and distributions for both weekends and weekdays.
+
+3. is_night:
+* In the 1000m data, the number of pickups drops significantly at night (is_night = 1). The median and interquartile range (IQR) are lower, indicating reduced Uber demand during nighttime in closer proximity to the Empire State Building.
+* In the 2000m data, the nighttime effect is less drastic, though there is still a slight decrease in the number of pickups during the night compared to daytime.
+
+4. is_raining_last_hour: 
+* In both 1000m and 2000m data, there is no significant effect of rain on the number of pickups. The medians and IQRs are quite similar whether it is raining or not, suggesting that rain does not strongly affect Uber demand in this dataset.
+
+5. memorial_day, independence_day, and labor_day: 
+* In both datasets, we observe fewer pickups on holidays, with lower median pickups on Memorial Day, Independence Day, and Labor Day compared to regular days. However, the imbalance with non-holidays might exaggerate this effect. We will investigate these holidays further to check for behavioral changes in Uber demand and use these variables to identify potential outliers.
+
+-------
+Some conclusions so far:
+We will remove the features is_snowing_last_hour and number_of_persons_killed from both of the datasets:
+```{r}
+# Function to remove features from the dataset and update numerical and categorical feature lists
+remove_features <- function(data, features_to_remove) {
+  
+ # Loop through each feature to remove
+  for (feature in features_to_remove) {
+    
+    # Check if the feature is in numerical_features and remove it if present
+    if (feature %in% numerical_features) {
+      numerical_features <<- setdiff(numerical_features, feature)
+    }
+    
+    # Check if the feature is in categorical_features and remove it if present
+    if (feature %in% categorical_features) {
+      categorical_features <<- setdiff(categorical_features, feature)
+    }
+  }
+  
+  # Remove the specified features from the dataset
+  data <- data %>%
+    select(-all_of(features_to_remove))
+  
+  # Return the updated data
+  return(data)
+}
+```
+
+```{r}
+features_to_remove <- c("is_snowing_last_hour", "number_of_persons_killed")
+```
+
+```{r}
+train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
+train_filtered_2000m_data
+```
+
+```{r}
+categorical_features
+```
+```{r}
+numerical_features
+```
+
+-------
+"In this section, we'll perform a multicollinearity check among the numerical features. If any features are highly correlated, we may remove one to prevent redundancy. We'll use the Variance Inflation Factor (VIF) to identify potential multicollinearity issues."
+
+```{r}
+# Define a function to fit the linear model and calculate VIF for numerical features only
+calculate_vif <- function(data, dataset_name, numerical_features) {
+  # Create a formula with only numerical features for VIF calculation
+  formula <- as.formula(paste("number_of_pickups ~", paste(numerical_features[-1], collapse = " + ")))
+  
+  # Fit a linear model to calculate VIF
+  model <- lm(formula, data = data)
+  
+  # Calculate VIF
+  vif_values <- vif(model)
+  
+  # Print the VIF values
+  print(paste("VIF values for", dataset_name))
+  print(vif_values)
+  
+  # Check for variables with VIF > 5
+  high_vif <- vif_values[vif_values > 5]
+  
+  cat("\n")
+  if (length(high_vif) > 0) {
+    print(paste("Features with VIF > 5 for", dataset_name))
+    print(high_vif)
+  } else {
+    print(paste("No features with VIF > 5 for", dataset_name))
+  }
+}
+```
+
+
+```{r}
+# Call the function for train_filtered_1000m_data
+calculate_vif(train_filtered_1000m_data, "train_filtered_1000m_data", numerical_features)
+```
+
+```{r}
+# Call the function for train_filtered_2000m_data
+calculate_vif(train_filtered_2000m_data, "train_filtered_2000m_data", numerical_features)
+```
+
+We have identified (as we expected) a very high Variance Inflation Factor (VIF) for both temp and feels_like in both datasets, indicating strong multicollinearity between these two variables. This aligns with the high correlation (close to 1) observed earlier between temp and feels_like. To address this, we will drop one of them. In this case, we will drop temp as it shows a slightly weaker correlation with the target variable number_of_pickups, and we will keep feels_like in the model.
+
+Lets run the function to remove this feature:
+```{r}
+features_to_remove <- c("temp")
+```
+
+```{r}
+train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
+train_filtered_2000m_data
+```
+
+```{r}
+categorical_features
+```
+
+```{r}
+numerical_features
+```
+
+--------
+
+Removing wind_speed and clouds_all:
+1. wind_speed:
+* The correlation between wind_speed and number_of_pickups is very low: -0.02 (1000m) and -0.03 (2000m).
+* In an urban environment like New York City, wind speed has minimal impact on transportation behavior. The city's infrastructure, such as sheltered streets and extensive public transit, reduces the influence of everyday wind fluctuations on Uber demand.
+
+2. clouds_all:
+* The correlation between clouds_all and number_of_pickups is weak: 0.14 in both datasets.
+* Cloudiness doesn't significantly impact transportation behavior. Unlike rain or snow, cloud cover alone isn't disruptive enough to influence Uber demand in New York City, making it less relevant for predictive modeling.
+
+Lets run the function to remove those features:
+```{r}
+features_to_remove <- c("wind_speed", "clouds_all")
+```
+
+```{r}
+train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
+train_filtered_1000m_data
+```
+
+```{r}
+train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
+train_filtered_2000m_data
+```
+
+```{r}
+categorical_features
+```
+
+```{r}
+numerical_features
+```
+
+#### Descriptive Statistics and Visualization
+Now, Lets do some visualizations to understand how the variables behave:
+```{r}
+# Basic summary statistics - 1000m
+summary(train_filtered_1000m_data)
+```
+```{r}
+# Basic summary statistics - 2000m
+summary(train_filtered_2000m_data)
+```
+Key Observations from the 1000m Dataset:
+1. Number of Pickups: The median number of pickups is 37, with a maximum of 190. The distribution shows that pickups vary widely in the 1000m radius.
+2. Weather: Humidity has a median of 49, and feels_like is around 23.85. Rain is infrequent (mean is 0.16), suggesting rain likely doesn't have a strong influence on demand.
+3. Crashes and Injuries: Crashes and injuries are rare in the 1000m area (median values are 0), indicating that incidents might not have a significant effect on Uber demand in this radius.
+4. Holidays: Memorial Day, Independence Day, and Labor Day are rare occurrences (mean close to 0), so their effect on demand could be limited.
+5. Taxi Pickups and Arrests: Taxi pickups have a median of 641, and total arrests have a median of 34, which indicates moderate activity in both taxi services and law enforcement within the 1000m radius.
+
+Key Observations from the 2000m Dataset:
+1. Number of Pickups: The median number of pickups is 204, with a maximum of 521, showing a larger volume of activity in this area.
+2. Weather: Humidity has a median of 49, and feels_like is around 23.82. Rain is similarly infrequent (mean of 0.16), likely not a major factor for Uber demand.
+3. Crashes and Injuries: There is a higher occurrence of crashes and injuries (median values: 4 crashes, 1 injury), reflecting more frequent incidents in the larger radius.
+4. Holidays: Holidays are rare (mean close to 0), and further analysis would be needed to assess their impact on Uber demand.
+5. Taxi Pickups and Arrests: Taxi pickups have a median of 641, and total arrests have a median of 985, indicating substantial taxi and law enforcement activity within the 2000m radius.
+
+##### Label & Features Analysis
+
+Distribution of Number of Pickups: We start by visualizing the distribution of the dependent variable (number_of_pickups).
+```{r}
+# Define a function to create the histogram for the distribution of "number_of_pickups"
+plot_pickup_distribution <- function(data, dataset_name, fill_color) {
+  ggplot(data, aes(x = number_of_pickups)) +
+    geom_histogram(bins = 30, fill = fill_color, color = "black") +
+    labs(
+      title = paste("Distribution of Number of Pickups -", dataset_name),
+      x = "Number of Pickups",
+      y = "Count"
+    )
+}
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+plot_pickup_distribution(train_filtered_1000m_data, "train_filtered_1000m_data", "lightblue")
+```
+Observations from the 1000m Data:
+* The distribution of the number of pickups is right-skewed, with the majority of data points concentrated between 0 and 100 pickups.
+* A large number of instances have fewer than 50 pickups, indicating that within the 1000m radius of the Empire State Building, lower pickup counts are more frequent.
+* There are fewer instances with a high number of pickups (100+), suggesting that higher demand events or locations are less frequent within this smaller radius.
+
+```{r}
+# Call the function for train_filtered_2000m_data
+plot_pickup_distribution(train_filtered_2000m_data, "train_filtered_2000m_data", "lightgreen")
+```
+Observations from the 2000m Data:
+* The distribution is more symmetric and appears closer to a normal distribution, with most data points falling between 100 and 300 pickups.
+* Pickup counts are higher overall, indicating that in the 2000m radius, larger-scale demand for Uber rides is more common.
+* There is a wider range of pickups in this dataset, with instances reaching up to 400 pickups, implying a more diverse set of demand situations at this larger distance from the Empire State Building.
+
+------------
+*TODO - what is autocorrelation in time series??*
+------------
+
+Here's a function that plots the number of Uber pickups over time: 
+```{r}
+plot_pickups_over_time <- function(data, dataset_name, color) {
+  
+  # Ensure 'time_interval' is in POSIXct format for time-based plotting
+  data$time_interval <- as.POSIXct(data$time_interval)
+  
+  # Create the plot
+  ggplot(data, aes(x = time_interval, y = number_of_pickups)) +
+    geom_line(color = color) +  # Line plot with the specified color
+    labs(
+      title = paste("Uber Pickups Over Time -", dataset_name),
+      x = "Time",
+      y = "Number of Pickups"
+    ) +
+    theme_minimal()  # Apply a clean theme
+}
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+plot_pickups_over_time(train_filtered_1000m_data, "train_filtered_1000m_data", "lightblue")
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+plot_pickups_over_time(train_filtered_2000m_data, "train_filtered_2000m_data", "lightgreen")
+```
+Observations:
+* Both plots show frequent and regular peaks, indicating periods of high demand. The troughs (lower points) suggest moments of lower demand. This suggests a cyclic pattern, likely related to daily commuting hours or other temporal factors like weekends or holidays.
+
+* In the second plot (2000m data), the pickups range significantly higher (up to 500 pickups), while the 1000m data has a much lower maximum (around 150 pickups). This difference suggests that a wider radius (2000m) captures a larger area with more Uber activity, which is logical given the larger catchment area.
+
+* There's no obvious large seasonal shift over time in either plot, which means that, at least from this visual analysis, Uber demand is relatively stable over these months. The slight increase in variance towards the end of the plots (August and September) could be worth investigating further.
+
+
+So now lets look per month: Looking at the data per month helps to capture seasonal patterns or trends that might be lost when viewing all the data together. By breaking it down monthly, we can identify specific periods of high or low demand, spot any anomalies, and assess how Uber pickups fluctuate over time, which is critical for time-series analysis and forecasting.
+
+```{r}
+# Function to plot Uber pickups over time for each month
+plot_pickups_per_month <- function(data, color, dataset_name) {
+  # Add a 'month' column to the data for grouping by month
+  data$month <- format(as.Date(data$time_interval), "%Y-%m")
+  
+  # Loop through each unique month and plot the data
+  unique_months <- unique(data$month)
+  
+  for (month in unique_months) {
+    month_data <- data %>% filter(month == !!month) # Filter the data for each month
+    
+    # Create the plot
+    p <- ggplot(month_data, aes(x = as.POSIXct(time_interval), y = number_of_pickups)) +
+      geom_line(color = color) +
+      labs(
+        title = paste("Uber Pickups Over Time -", month, "-", dataset_name),
+        x = "Time",
+        y = "Number of Pickups"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      scale_x_datetime(date_labels = "%d-%H:%M", date_breaks = "1 day")
+    
+    # Display the plot
+    print(p)
+  }
+}
+```
+
+```{r}
+plot_pickups_per_month(train_filtered_1000m_data, "lightblue", "1000m Data")
+```
+
+```{r}
+plot_pickups_per_month(train_filtered_2000m_data, "lightgreen", "2000m Data")
+```
+
+Observations: TODO
+
+
+```{r}
+# Function to plot the number of pickups per month
+plot_monthly_behavior <- function(data, dataset_name, color) {
+  # Convert time_interval to date format and extract month
+  data$month <- format(as.Date(data$time_interval), "%Y-%m")
+  
+  # Summarize the total pickups per month
+  monthly_data <- data %>%
+    group_by(month) %>%
+    summarise(total_pickups = sum(number_of_pickups))
+  
+  # Create a line plot to show the behavior of pickups per month
+  ggplot(monthly_data, aes(x = month, y = total_pickups, group = 1)) +
+    geom_line(color = color, size = 1) +
+    geom_point(color = color, size = 2) +
+    labs(
+      title = paste("Monthly Behavior of Uber Pickups -", dataset_name),
+      x = "Month",
+      y = "Total Pickups"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+# Call the function for 1000m data
+plot_monthly_behavior(train_filtered_1000m_data, "1000m Data", "lightblue")
+```
+```{r}
+# Call the function for 2000m data
+plot_monthly_behavior(train_filtered_2000m_data, "2000m Data", "lightgreen")
+```
+Note: There is a sharp drop in September because only 9 days are present for that month in the dataset, whereas the other months represent full months.
+
+Here is the code to show the number of days in each month:
+```{r}
+# Function to calculate the number of days present in each month
+count_days_per_month <- function(data, dataset_name) {
+  data %>%
+    mutate(month = format(time_interval, "%Y-%m")) %>%
+    group_by(month) %>%
+    summarize(number_of_days = n_distinct(as.Date(time_interval))) %>%
+    arrange(month) %>%
+    print(paste("Number of days per month -", dataset_name))
+}
+```
+
+```{r}
+# Call the function for train_filtered_1000m_data
+count_days_per_month(train_filtered_1000m_data, "1000m Data")
+```
+
+```{r}
+# Call the function for train_filtered_2000m_data
+count_days_per_month(train_filtered_2000m_data, "2000m Data")
+```
+SO: Overall, the demand for Uber appears to be on the rise, except for a small decrease observed in June. We will later investigate what might have caused this dip in demand during that month to understand if any specific factors contributed to it.
+
+Lets try and see why:
+TODO
+
+------------
+
+Special events count in every month:
+```{r}
+# Define the function to create the box plot for event sum by month
+plot_event_sum_by_month <- function(data, color) {
+  
+  # Extract the month from the time_interval
+  data <- data %>%
+    mutate(month = format(as.Date(time_interval), "%Y-%m"))
+  
+  # Group by month and calculate the sum of events for each month
+  monthly_event_sum <- data %>%
+    group_by(month) %>%
+    summarise(event_sum = sum(event_count))
+  
+  # Create the box plot
+  ggplot(monthly_event_sum, aes(x = month, y = event_sum)) +
+    geom_boxplot(fill = color, color = "black") +
+    labs(
+      title = "Event Sum by Month",
+      x = "Month",
+      y = "Event Sum"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate the x-axis labels for better readability
+}
+```
+
+```{r}
+plot_event_sum_by_month(train_filtered_1000m_data, "lightblue")
+```
+
+```{r}
+plot_event_sum_by_month(train_filtered_2000m_data, "lightgreen")
+```
+
+------------
+
+```{r}
+
+```
+
+------------
+```{r}
+
+```
+
+------------
+
+#### TODO - FIX FROM DOWN HERE:
+2. Number of Pickups vs. Temperature
+Temperature has a strong impact on people's decision to use Uber, especially during extreme weather conditions.
+```{r}
+# Define a function to create the scatter plot for "temp" vs "number_of_pickups"
+plot_temp_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = temp, y = number_of_pickups)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "lm", color = "red") +
+    labs(
+      title = paste("Number of Pickups vs. Temperature -", dataset_name),
+      x = "Temperature (°C)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data_cleaned
+plot_temp_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data_cleaned
+plot_temp_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+
+```
+todo fix explanations and graph
+train_filtered_1000m_data:
+Spread of Data: The points are widely scattered, indicating that temperature alone does not have a strong, clear impact on the number of pickups. There is significant variation in the number of pickups across all temperature ranges.
+
+Slight Positive Trend: The red line, which represents the linear regression fit, shows a slight upward trend, indicating a weak positive correlation between temperature and the number of pickups. As temperature increases, there is a small increase in the number of pickups, but the relationship is not very strong.
+
+Variability Across Temperatures: There are high variances in the number of pickups at all temperature levels. This suggests that other factors (e.g., rain, time of day) might influence Uber demand more than temperature alone.
+
+Summary:
+While there is a slight positive relationship between temperature and Uber pickups, the effect of temperature seems minimal. Other factors may have a stronger influence on demand in New York City, as indicated by the high variability in the number of pickups at all temperature levels.
+
+
+train_filtered_2000m_data:
+General Trend:
+The red line represents a linear regression, showing a slight positive correlation between temperature and the number of Uber pickups. As the temperature increases, the number of pickups tends to increase slightly.
+
+Data Spread:
+The data points are widely scattered, indicating significant variability in Uber pickups across different temperature ranges. This suggests that while temperature has some impact on the number of pickups, other factors may play a larger role in driving demand.
+
+Pickup Clusters:
+The majority of pickups are clustered between 200 to 300 pickups across various temperature levels, indicating relatively stable demand regardless of temperature.
+There are a few extreme values above 400 pickups, but these are less frequent and spread across the entire temperature range.
+
+Summary:
+The plot indicates a weak but positive relationship between temperature and the number of pickups. While the number of pickups tends to increase slightly with rising temperatures, the wide spread of data suggests that temperature alone does not have a strong predictive power on Uber demand. Other factors likely play a more significant role.
+
+
+
+3. Number of Pickups vs. Rain (is_raining_last_hour)
+Rain has a direct effect on Uber pickups as people tend to avoid walking in rainy weather.
+
+```{r}
+# Define a function to create the boxplot for "is_raining_last_hour" vs "number_of_pickups"
+plot_rain_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = factor(is_raining_last_hour), y = number_of_pickups)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Number of Pickups vs. Rain -", dataset_name),
+      x = "Rain in the Last Hour (0: No, 1: Yes)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data_cleaned
+plot_rain_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data_cleaned
+plot_rain_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+```
+todo fix explanations
+train_filtered_1000m_data:
+Rain Effect:
+When it rains (1), the median number of pickups is higher compared to when it does not rain (0). This suggests that rain generally increases the demand for Uber rides.
+Spread and Variability:
+
+The range of the number of pickups is wider during rainy periods, with more outliers above 100 pickups. This indicates that some rainy periods lead to a significant spike in Uber demand.
+Without rain, the distribution is more compact, with fewer outliers and a lower median.
+
+Outliers:
+Both when it rains and doesn’t rain, there are outliers (higher pickup numbers). However, there are more extreme values (pickups above 150) when it rains, indicating that rain can sometimes cause a significant increase in demand.
+
+Summary:
+The plot confirms that rain increases the number of Uber pickups. The median and upper ranges of pickups are higher when it rains, and the distribution suggests more variability in demand during rainy periods. Rain can cause surges in demand for Uber rides, making it a key factor in predicting pickups.
+
+train_filtered_2000m_data:
+No Rain (0):
+The median number of pickups is around 200 when there was no rain in the last hour.
+The range of pickups is larger, with some extreme outliers reaching 500 pickups, suggesting that during dry periods, demand can spike due to various factors like events or commutes.
+
+Rain (1):
+The median number of pickups during rain is slightly higher than during dry periods, indicating that rain has a positive effect on Uber demand.
+The range of pickups during rain is narrower, with fewer extreme outliers compared to dry conditions, suggesting that demand is more stable during rainy periods, though still elevated.
+
+Summary:
+Rain generally increases the number of Uber pickups slightly, with more stable demand compared to dry periods. However, during non-rainy hours, the demand is more variable, with some periods seeing much higher spikes in pickups, likely driven by other factors such as events or busy periods.
+
+
+4. Number of Pickups vs. Is Night
+```{r}
+# Define a function to create the boxplot for "is_night" vs "number_of_pickups"
+plot_night_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = factor(is_night), y = number_of_pickups)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Number of Pickups vs. Night -", dataset_name),
+      x = "Is Night (0: No, 1: Yes)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data
+plot_night_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data
+plot_night_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+
+```
+train_filtered_1000m_data summary:
+Daytime (0):
+The median number of pickups is higher.
+A wider range of pickups is seen, with more outliers above 100 pickups, indicating periods of higher demand (possibly due to rush hours or events).
+
+Nighttime (1):
+The median number of pickups is lower, and the overall distribution is more compact.
+Fewer extreme outliers are present, indicating more consistent but lower demand during the night.
+Overall, Uber demand is generally higher during the day but remains steady at lower levels through the night.
+
+train_filtered_2000m_data summary:
+Daytime (0):
+The median number of pickups is slightly higher during the day (around 200 pickups).
+There is a wider range of pickups, with some extreme outliers going up to 500 pickups. This suggests periods of higher demand during the day, likely driven by commutes and events.
+
+Nighttime (1):
+The median number of pickups at night is slightly lower compared to the day.
+There is a narrower range of values for pickups at night, but still some outliers. This suggests more consistent but slightly lower demand during night hours.
+
+Summary:
+During the day, the number of Uber pickups tends to be higher, with more variation and spikes in demand. At night, the demand is slightly lower and more stable, with fewer extreme peaks, though there are still some higher-demand periods likely tied to nightlife or events.
+
+
+
+5. Number of Pickups vs. Is Weekend
+Weekends generally see different commuting patterns compared to weekdays, with more leisure-related travel rather than work commutes.
+
+```{r}
+# Define a function to create the boxplot for "is_weekend" vs "number_of_pickups"
+plot_weekend_vs_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = factor(is_weekend), y = number_of_pickups)) +
+    geom_boxplot() +
+    labs(
+      title = paste("Number of Pickups vs. Weekend -", dataset_name),
+      x = "Is Weekend (0: Weekday, 1: Weekend)",
+      y = "Number of Pickups"
+    )
+}
+
+# Call the function for train_filtered_1000m_data
+plot_weekend_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data
+plot_weekend_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+
+```
+
+train_filtered_1000m_data: 
+Weekdays (0):
+The median number of pickups is higher on weekdays.
+The range of pickups is wider on weekdays, with more outliers above 100 pickups, indicating higher demand variability during weekdays.
+Some extreme outliers suggest that certain periods on weekdays can see significantly increased demand, possibly due to work commutes or events.
+
+Weekends (1):
+The median number of pickups is lower on weekends compared to weekdays.
+There are fewer extreme outliers on weekends, and the distribution is more compact, suggesting that demand is generally lower and more stable during weekends.
+
+Summary:
+Uber demand is higher and more variable on weekdays, likely driven by work-related commuting and peak hours. On weekends, demand is lower and more consistent, possibly due to reduced work-related travel and more leisure trips, which are less frequent.
+
+
+train_filtered_2000m_data:
+Weekdays (0):
+The median number of pickups is slightly higher on weekdays than on weekends, around 200 pickups.
+The range of pickups is larger on weekdays, with outliers extending up to 500 pickups, suggesting periods of high demand likely driven by work commutes or events.
+
+Weekends (1):
+The median number of pickups is slightly lower than on weekdays but still close to 200 pickups, indicating stable demand over the weekend.
+There are fewer extreme outliers, and the range of pickups is narrower compared to weekdays, reflecting more consistent but slightly lower demand.
+
+Summary:
+Overall, the number of pickups on weekdays and weekends is relatively similar, with a slightly higher median on weekdays. However, weekday demand shows more variability with higher peaks, while weekend demand is more stable with fewer extreme periods of high demand.
+
+
+
+Some time series visualizations:
+```{r}
+# Define a function to plot time series of pickups over time
+plot_time_series_pickups <- function(data, dataset_name) {
+  ggplot(data, aes(x = time_interval, y = number_of_pickups, group = 1)) +
+    geom_line(color = "blue", size = 1) +
+    labs(
+      title = paste("Time Series of Pickups Throughout the Day -", dataset_name),
+      x = "Time (15-minute intervals)",
+      y = "Number of Pickups"
+    ) +
+    theme_minimal()
+}
+
+
+# Call the function for train_filtered_1000m_data
+plot_time_series_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
+
+# Call the function for train_filtered_2000m_data
+plot_time_series_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
+
+```
+
+The plot indicates that Uber demand in this area shows regular cycles of high and low activity, with notable peaks in demand occurring periodically. The sharp spikes and wide variability reflect the changing demand for Uber throughout each day, potentially influenced by commuting patterns or events in the city.
+
+
+
+```{r}
+# Plot lag relationship between pickup counts at different time lags
+par(mfrow = c(2, 3))  # Set up the plotting area for 6 plots (2 rows, 3 columns)
+for (i in 1:6) {
+  lag.plot(train_filtered_1000m_data$number_of_pickups, lags = i, main = paste("Lag Plot with Lag", i))
+}
+
+```
+Conclusion:
+This analysis suggests that Uber demand in the area has a strong short-term dependency. Predicting future pickups based on past data would likely benefit from using recent time intervals (within the last 30 minutes) rather than older data. As the time lag increases, past data becomes less useful for making predictions.
+
+#### TODO - FIX FROM UP HERE:
+
+#### Preprocessing Steps
+
+##### Spliting the data
+By splitting the data into training and validation sets, we can train our model on the training set and assess its performance on the validation set. This helps us understand how well our model is likely to perform on new, unseen data. Additionally, inorder to avoid data leaking, and understanding that onehotencoder is based on fitting and transforming, from now on will work with test_train split.
+
+Since our project is based on time intervals (time series), it is essential to respect the chronological order of the data. Our training data spans 6 months, *TODO decide on a correct test_train split*
+
+```{r}
+range(train_filtered_1000m_data$time_interval)
+```
+
+```{r}
+range(train_filtered_2000m_data$time_interval)
+```
+```{r split to val and train}
+
+```
+
+
+##### Outlier Handling
+Outliers should be detected and handled based solely on the training data. This avoids influencing the validation data and ensures that the validation set remains unbiased.
+
+```{r}
+
+```
+
+##### Normalization
+Why normalize: when will use Non-tree based algorithms, especially K-NN, normalization will play a big role, since calculation either distance / any type of effect (values increasing / deacreasing) we would like to have all the features have the same "size".
+
+```{r}
+
+```
+
+## Part C: Forecast for the Future
+
+### Model 1 - Full Data
+Final Data for Modeling:
+Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final training dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
+
+```{r model_1_full_data}
+```
+
+### Model 2 - Filtered Data
+1. The Problem:
+The training data includes Uber pickups within a 2000-meter radius, while the test data represents pickups within a 1000-meter radius around the Empire State Building. This difference in radius creates a problem because the model might learn patterns from a wider area (2000m) that do not apply to the narrower, more localized 1000m area required for the predictions in the test data.
+
+2. Clustering Solution:
+Since the test data doesn't include specific locations (latitude, longitude), and the cluster based on location from the test data is not present in the training data, we need a non-location-based clustering approach.
+
+```{r model_2_filtered_data}
+```
+
+## Conclusion
+```{r conclusion}
+```

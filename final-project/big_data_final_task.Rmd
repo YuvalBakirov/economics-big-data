@@ -264,11 +264,11 @@ Filter data to include only pickups between 17:00 and 00:00:
 ```{r}
 # For 1000-meter filtered data
 train_filtered_1000m_data <- train_filtered_1000m_data %>%
-  filter(hour(timestamp) >= 17 | hour(timestamp) == 0)
+  filter(hour(timestamp) >= 17 & hour(timestamp) <= 23 | (hour(timestamp) == 0 & minute(timestamp) == 0 & second(timestamp) == 0))
 
 # For 2000-meter filtered data
 train_filtered_2000m_data <- train_filtered_2000m_data %>%
-  filter(hour(timestamp) >= 17 | hour(timestamp) == 0)
+  filter(hour(timestamp) >= 17 & hour(timestamp) <= 23 | (hour(timestamp) == 0 & minute(timestamp) == 0 & second(timestamp) == 0))
 ```
 
 Check the Results:
@@ -317,14 +317,13 @@ We're grouping the `timestamp` data into 15-minute intervals to make it easier t
 This action is critical because our test data is already divided into 15-minute intervals, so we need to apply the same approach to our training data to ensure consistency. By creating the number_of_pickups feature (the label), we align both datasets in terms of granularity, enabling the model to learn from the training data and make accurate predictions on the test data.
 
 The function takes a dataset as input, creates the 15-minute time intervals, and calculates the pickup counts per interval:
-
 ```{r}
 create_pickup_counts <- function(data) {
   pickup_counts <- data %>%
     mutate(time_interval = floor_date(timestamp, "15 minutes")) %>%
     group_by(time_interval) %>%
     summarise(number_of_pickups = n())
-  
+
   return(pickup_counts)
 }
 ```
@@ -332,13 +331,13 @@ create_pickup_counts <- function(data) {
 ```{r}
 # Use the function for 1000m data
 pickup_counts_1000m <- create_pickup_counts(train_filtered_1000m_data)
-head(pickup_counts_1000m)
+pickup_counts_1000m
 ```
 
 ```{r}
 # Use the function for 2000m data
 pickup_counts_2000m <- create_pickup_counts(train_filtered_2000m_data)
-head(pickup_counts_2000m)
+pickup_counts_2000m
 ```
 
 ```{r time_intervals}
@@ -357,15 +356,13 @@ create_time_intervals <- function(data, pickup_counts) {
 # Apply the function to the 1000-meter filtered data
 train_filtered_1000m_data <- create_time_intervals(train_filtered_1000m_data, pickup_counts_1000m)
 
-# Check the first few rows of the updated 1000m dataset
-head(train_filtered_1000m_data)
+train_filtered_1000m_data
 ```
 
 ```{r}
 # Apply the function to the 2000-meter filtered data
 train_filtered_2000m_data <- create_time_intervals(train_filtered_2000m_data, pickup_counts_2000m)
 
-# Check the first few rows of the updated 2000m dataset
 train_filtered_2000m_data
 ```
 
@@ -486,6 +483,7 @@ check_invalid_timestamps <- function(data) {
 cat("For 1000m data:\n")
 check_invalid_timestamps(train_filtered_1000m_data)
 ```
+
 ```{r}
 # Check for invalid timestamps in the 2000m data
 cat("For 2000m data:\n")
@@ -493,6 +491,8 @@ check_invalid_timestamps(train_filtered_2000m_data)
 ```
 
 Check if all the dates in the timestamp column are within the correct range (April 1, 2014, to September 9, 2014):
+When all timestamps are within the correct range - it means that the range of the time intervals is correct as well because it based on it
+
 ```{r}
 # Function to check if timestamps are within a valid range
 check_date_range <- function(data, start_date, end_date) {
@@ -526,11 +526,14 @@ check_date_range(train_filtered_1000m_data, start_date, end_date)
 # Check for the 2000m data
 cat("For 2000m data:\n")
 check_date_range(train_filtered_2000m_data, start_date, end_date)
+
 ```
+
 ```{r}
 # Check the range of the time_interval in the 1000m data
 range(train_filtered_1000m_data$timestamp)
 ```
+
 ```{r}
 # Check the range of the time_interval in the 2000m data
 range(train_filtered_2000m_data$timestamp)
@@ -571,6 +574,7 @@ check_lat_lon(train_filtered_1000m_data)
 cat("For 2000m data:\n")
 check_lat_lon(train_filtered_2000m_data)
 ```
+
 Check for errors in Base code:
 Function to list all unique bases:
 ```{r}
@@ -669,6 +673,7 @@ plot_base_counts(train_filtered_1000m_data, "Number of Rows per Base (1000m Data
 # Apply the function to the 2000m dataset
 plot_base_counts(train_filtered_2000m_data, "Number of Rows per Base (2000m Data)", "lightgreen")
 ```
+
 ```{r}
 # Function to plot timeline of Uber pickups per day for each base
 plot_base_timeline <- function(data, title) {
@@ -701,53 +706,143 @@ plot_base_timeline(train_filtered_1000m_data, "Uber Pickups per Day by Base (100
 plot_base_timeline(train_filtered_2000m_data, "Uber Pickups per Day by Base (2000m Data)")
 ```
 
+TODO - TODEL:
 ```{r}
-# Function to plot days with zero pickups for each base
-plot_zero_pickups <- function(data, title) {
-  # Extract the date from the timestamp and group by base and date
-  base_daily_counts <- data %>%
-    mutate(date = as.Date(timestamp)) %>%
-    group_by(base, date) %>%
-    summarise(count_pickups_per_day = n(), .groups = 'drop') 
+# # Function to plot days with zero pickups for each base
+# plot_zero_pickups <- function(data, title) {
+#   # Extract the date from the timestamp and group by base and date
+#   base_daily_counts <- data %>%
+#     mutate(date = as.Date(timestamp)) %>%
+#     group_by(base, date) %>%
+#     summarise(count_pickups_per_day = n(), .groups = 'drop') 
+#   
+#   # Create a complete sequence of dates for each base to account for missing days
+#   full_date_range <- base_daily_counts %>%
+#     group_by(base) %>%
+#     tidyr::complete(date = seq(min(date), max(date), by = "day"),
+#                     fill = list(count_pickups_per_day = 0)) %>%
+#     ungroup()
+#   
+#   # Filter for rows where the number of pickups is zero
+#   zero_pickups <- full_date_range %>%
+#     filter(count_pickups_per_day == 0)
+#   
+#   # Plot the data
+#   ggplot(zero_pickups, aes(x = date, y = count_pickups_per_day, color = base, group = base)) +
+#     geom_point(size = 2) +  # Use points to mark zero pickups
+#     labs(title = title,
+#          x = "Date",
+#          y = "Zero Pickups",
+#          color = "Base") +
+#     theme_minimal() +
+#     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#     scale_y_continuous(limits = c(0, 0.1), expand = c(0, 0))  # Fix y-axis to a small range to emphasize 0 pickups
+# }
+```
+
+```{r}
+# # Apply the function to your dataset
+# plot_zero_pickups(train_filtered_1000m_data, "Days with Zero Uber Pickups per Base (1000m Data)")
+```
+
+```{r}
+# # Apply the function to your dataset
+# plot_zero_pickups(train_filtered_2000m_data, "Days with Zero Uber Pickups per Base (2000m Data)")
+```
+
+```{r}
+plot_base_usage_by_month <- function(data, data_name) {
+  # Add a 'month' column to the data for grouping by month
+  data <- data %>%
+    mutate(month = floor_date(time_interval, "month"))
   
-  # Create a complete sequence of dates for each base to account for missing days
-  full_date_range <- base_daily_counts %>%
-    group_by(base) %>%
-    tidyr::complete(date = seq(min(date), max(date), by = "day"),
-                    fill = list(count_pickups_per_day = 0)) %>%
-    ungroup()
+  # Aggregate the data to handle duplicate time_intervals, summing the number of pickups for each base at each time interval
+  data <- data %>%
+    group_by(time_interval, base) %>%
+    summarise(number_of_pickups = sum(number_of_pickups), .groups = "drop")  # Added .groups = "drop" to avoid message
+
+  # Split data by month
+  monthly_data <- split(data, floor_date(data$time_interval, "month"))
   
-  # Filter for rows where the number of pickups is zero
-  zero_pickups <- full_date_range %>%
-    filter(count_pickups_per_day == 0)
+  # Loop over each month and create a plot
+  for (month_data in monthly_data) {
+    # Get the month name for the title
+    month_name <- format(unique(floor_date(month_data$time_interval, "month")), "%B %Y")
+    
+    # Create the plot
+    p <- ggplot(month_data, aes(x = time_interval, y = number_of_pickups, color = base)) +
+      geom_line(size = 1) +  # Line plot to show usage over time
+      labs(
+        title = paste("Base Usage Over Time -", month_name, "for:", data_name),
+        x = "Time Interval",
+        y = "Number of Pickups"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+    
+    # Print the plot for the current month
+    print(p)
+  }
+}
+
+```
+
+```{r}
+plot_base_usage_by_month(train_filtered_1000m_data, "1000m data")
+```
+
+```{r}
+plot_base_usage_by_month(train_filtered_2000m_data, "2000m data")
+```
+
+```{r}
+# Function to create 6 bar plots for each base showing the sum of pickups for every day of the month
+plot_daily_pickups_by_base <- function(data, data_name, color) {
+  # Add a 'day' column to the data for grouping by day
+  data <- data %>%
+    mutate(day = floor_date(time_interval, "day"))
   
-  # Plot the data
-  ggplot(zero_pickups, aes(x = date, y = count_pickups_per_day, color = base, group = base)) +
-    geom_point(size = 2) +  # Use points to mark zero pickups
-    labs(title = title,
-         x = "Date",
-         y = "Zero Pickups",
-         color = "Base") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    scale_y_continuous(limits = c(0, 0.1), expand = c(0, 0))  # Fix y-axis to a small range to emphasize 0 pickups
+  # Group by base and day, and calculate the total number of pickups for each base on each day
+  daily_pickups <- data %>%
+    group_by(day, base) %>%
+    summarise(number_of_pickups = sum(number_of_pickups), .groups = "drop")
+  
+  # Split the data by base
+  base_data <- split(daily_pickups, daily_pickups$base)
+  
+  # Loop over each base and create a bar plot
+  for (base_name in names(base_data)) {
+    # Get the data for the current base
+    base_df <- base_data[[base_name]]
+    
+    # Create the bar plot
+    p <- ggplot(base_df, aes(x = day, y = number_of_pickups)) +
+      geom_bar(stat = "identity", fill = color, color = "black") +  # Bar plot
+      labs(
+        title = paste("Daily Pickups for:", data_name, "- Base", base_name),
+        x = "Day",
+        y = "Number of Pickups"
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+    
+    # Print the plot for the current base
+    print(p)
+  }
 }
 ```
 
 ```{r}
-# Apply the function to your dataset
-plot_zero_pickups(train_filtered_1000m_data, "Days with Zero Uber Pickups per Base (1000m Data)")
+plot_daily_pickups_by_base(train_filtered_1000m_data, "1000m data", "lightblue")
 ```
-
 ```{r}
-# Apply the function to your dataset
-plot_zero_pickups(train_filtered_2000m_data, "Days with Zero Uber Pickups per Base (2000m Data)")
+plot_daily_pickups_by_base(train_filtered_2000m_data, "2000m data", "lightgreen")
 ```
 
 For both 1000m and 2000m data:
 * Base B02764 and B02512 have a significantly lower number of Uber pickups compared to the other bases. This pattern is consistent in both datasets.
 
-* Despite the lower overall pickup counts, there is no day in the data where no Uber pickups occur from any of the bases. Each base, including B02764 and B02512, consistently records pickups on every day within the date range. This indicates that all bases are operational throughout the dataset, even though the pickup activity differs in scale.
+* Despite the lower overall pickup counts, there is Uber representative from each of the bases in each of the months and days. Each base, including B02764 and B02512, consistently records pickups on every moth and day within the date range. This indicates that all bases are operational throughout the dataset, even though the pickup activity differs in scale.
 
 * Given the consistent activity from all bases, we conclude that all bases are relevant to our analysis. We will therefore retain all records from all bases to ensure the model captures the entire range of Uber activity across the city.
 
@@ -781,6 +876,133 @@ train_filtered_1000m_data
 # Apply the function to the 2000m dataset
 train_filtered_2000m_data <- clean_data(train_filtered_2000m_data)
 head(train_filtered_2000m_data)
+```
+
+Lets Make sure there are no duplicated time interval:
+```{r}
+# Function to get rows with duplicate time_interval values
+get_duplicate_time_intervals <- function(data, time_interval) {
+  
+  # Identify duplicate time_intervals
+  duplicate_intervals <- data[[time_interval]][duplicated(data[[time_interval]])]
+  
+  # Return only the rows that have duplicate time_intervals
+  duplicate_rows <- data[data[[time_interval]] %in% duplicate_intervals, ]
+  
+  cat("There are: ", length(duplicate_intervals), "duplicate time intervals.\n")
+  
+  return(duplicate_rows)
+}
+
+```
+
+```{r}
+duplicate_rows_1000 <- get_duplicate_time_intervals(train_filtered_1000m_data, "time_interval")
+duplicate_rows_1000 
+```
+
+```{r}
+duplicate_rows_2000 <- get_duplicate_time_intervals(train_filtered_2000m_data, "time_interval")
+duplicate_rows_2000 
+```
+
+```{r}
+duplicate_rows_test <- get_duplicate_time_intervals(test_fixed_data, "time_interval")
+duplicate_rows_test
+```
+
+### Dealing With Missing Time Intervals
+Now, we would like to see if there are missing time intervals:
+```{r}
+# Function to find missing time intervals based on the actual data's range
+find_missing_time_intervals <- function(data) {
+  
+  # Get the range of time intervals that we want 
+  start_time <- as.POSIXct("2014-04-01 17:00:00", tz = "UTC")
+  end_time <- as.POSIXct("2014-09-09 23:45:00", tz = "UTC")
+  
+  # Create a full sequence of expected time intervals at 15-minute intervals
+  expected_time_sequence <- seq(from = as.POSIXct(start_time, tz = "UTC"), 
+                                to = as.POSIXct(end_time, tz = "UTC"), by = "15 min")
+  
+  # Filter expected time sequence for time intervals between 17:00 and 00:00 only
+  expected_time_sequence <- expected_time_sequence[format(expected_time_sequence, "%H") >= "17" & 
+                                                   (format(expected_time_sequence, "%H") <= "23" | 
+                                                   (format(expected_time_sequence, "%H") == "00" & 
+                                                    format(expected_time_sequence, "%M") == "00"))]
+  
+  # Extract unique time intervals from actual data
+  actual_intervals <- data %>%
+    mutate(Unique_Interval = format(!!sym("time_interval"), "%Y-%m-%d %H:%M:%S")) %>%
+    distinct(Unique_Interval)
+  
+  # Find missing time intervals by comparing with the actual time intervals in the data
+  missing_intervals <- setdiff(format(expected_time_sequence, "%Y-%m-%d %H:%M:%S"), actual_intervals$Unique_Interval)
+  
+  # Return missing intervals in POSIXct format
+  if (length(missing_intervals) > 0) {
+    print("Missing date-time intervals:")
+    return(as.POSIXct(missing_intervals, format="%Y-%m-%d %H:%M:%S", tz="UTC"))
+  } else {
+    print("No missing date-time intervals.")
+    return(NULL)
+  }
+}
+```
+
+```{r}
+missing_intervals_1000 <- find_missing_time_intervals(train_filtered_1000m_data)
+missing_intervals_1000
+```
+
+```{r}
+missing_intervals_2000 <-find_missing_time_intervals(train_filtered_2000m_data)
+missing_intervals_2000
+```
+
+```{r}
+range(pickup_counts_1000m$time_interval)
+```
+
+```{r}
+range(pickup_counts_2000m$time_interval)
+```
+
+```{r}
+train_filtered_1000m_data
+```
+
+Lets add the missing time intervals into the dataset:
+```{r}
+add_missing_intervals <- function(data, missing_intervals) {
+  
+  # Create a data frame for the missing intervals with 0 pickups
+  missing_data <- data.frame(
+    time_interval = missing_intervals,    # Add the missing intervals
+    number_of_pickups = 0                 # Assign 0 pickups for each missing interval
+  )
+  
+  # Bind the missing data with the original data
+  updated_data <- rbind(data, missing_data)
+  
+  # Sort the data by time_interval to keep it in the correct order
+  updated_data <- updated_data[order(updated_data$time_interval), ]
+  
+  return(updated_data)
+}
+```
+
+```{r}
+train_filtered_1000m_data <- add_missing_intervals(train_filtered_1000m_data, missing_intervals_1000)
+```
+
+```{r}
+train_filtered_1000m_data
+```
+
+Lets see the rows added and that number_of_pickups is 0:
+```{r}
+train_filtered_1000m_data[train_filtered_1000m_data$number_of_pickups == 0, ]
 ```
 
 ## Part B: Exploratory Data Analysis (EDA)
@@ -818,6 +1040,7 @@ train_filtered_1000m_data
 train_filtered_2000m_data <- add_is_weekend(train_filtered_2000m_data)
 train_filtered_2000m_data
 ```
+
 ```{r}
 # Apply the function to the test dataset
 test_fixed_data <- add_is_weekend(test_fixed_data)
@@ -975,11 +1198,46 @@ test_fixed_data
 weather_data
 ```
 
+We will make sure there are no duplicates in the data:
+```{r}
+get_duplicate_time_intervals(weather_data, "hourly_time_interval")
+```
+
+Lets drop the duplicates so that the merge with our data wont get duplicates as well:
+```{r}
+# Function to drop duplicates based on the time_interval
+drop_duplicate_time_intervals <- function(data, time_interval) {
+  
+  # Remove duplicates based on the specified time_interval column, keeping the first occurrence
+  data_deduplicated <- data[!duplicated(data[[time_interval]]), ]
+  
+  cat("Duplicates removed. Remaining rows: ", nrow(data_deduplicated), "\n")
+  
+  return(data_deduplicated)
+}
+```
+
+```{r}
+weather_data <- drop_duplicate_time_intervals(weather_data, "hourly_time_interval")
+```
+
+```{r}
+get_duplicate_time_intervals(weather_data, "hourly_time_interval")
+```
+
+```{r}
+weather_data
+```
+
 Select the Required Columns from the Weather Data:
 ```{r}
 # Select only the required columns from the weather data
 weather_data_selected <- weather_data %>%
   select(hourly_time_interval, temp, humidity, wind_speed, feels_like, clouds_all, is_raining_last_hour, is_snowing_last_hour)
+```
+
+```{r}
+weather_data_selected
 ```
 
 The features we added:
@@ -996,15 +1254,28 @@ Cloud cover (clouds_all): Cloud cover is usually not a direct predictor of Uber 
 
 Humidity: Humidity could play a role, but its relevance is usually secondary compared to other weather factors like rain or temperature.
 
+```{r}
+train_filtered_1000m_data
+```
+
+```{r}
+duplicate_rows_1000 <- get_duplicate_time_intervals(train_filtered_1000m_data, "time_interval") 
+duplicate_rows_1000
+```
+
 Merging Weather Data with 1000m & 2000m & test Data Based on rounded_timestamp and hourly_time_interval:
 ```{r}
 # Merge the weather data with the 1000m dataset using 'rounded_timestamp' and 'hourly_time_interval'
 train_filtered_1000m_data <- train_filtered_1000m_data %>%
   left_join(weather_data_selected, by = c("rounded_timestamp" = "hourly_time_interval"))
 
-# Check the first few rows of the updated 1000m dataset
-head(train_filtered_1000m_data)
+train_filtered_1000m_data
 ```
+
+```{r}
+get_duplicate_time_intervals(train_filtered_1000m_data, "time_interval")
+```
+
 
 ```{r}
 # Merge the weather data with the 2000m dataset using 'rounded_timestamp' and 'hourly_time_interval'

@@ -2278,90 +2278,129 @@ Observations from the 2000m Data:
 
 ------------
 
-Here's a function that plots the number of Uber pickups over time: 
+TODO - גרף סהכ יומי ושבועי, לראות אם יש ימים חריגים שלא אמורים להיות כל שנה
+לראות בסהכ השבועי שיכול להסביר את נפילה ואת העליה באוגוסט
+לראות אם החגים מתנהגים דומה אם כן נעשה פיצאר אחד לחגים
+
+סהכ יומי וסהכ שעות עבודה בגרף - לראות  אם יש התנהגות שונה
+
+
+##### Trends
+
+Let's look at the trend over different times for the demand for Uber rides in each of the data ranges we have:
 ```{r}
-plot_pickups_over_time <- function(data, dataset_name, color) {
+plot_moving_averages <- function(df, column, data_name) {
+  # Calculate moving averages for different trends
+  df <- df %>%
+    mutate(
+      daily_avg = zoo::rollmean(.data[[column]], 28, fill = NA),  # Daily trend (28 intervals in a day)
+      weekly_avg = zoo::rollmean(.data[[column]], 196, fill = NA), # Weekly trend (28*7 intervals in a week)
+      monthly_avg = zoo::rollmean(.data[[column]], 840, fill = NA) # Monthly trend (28*30 intervals in a month)
+    )
   
-  # Ensure 'time_interval' is in POSIXct format for time-based plotting
-  data$time_interval <- as.POSIXct(data$time_interval)
+  # Filter data to start from April
+  df <- df %>% filter(time_interval >= as.Date("2014-04-01"))
   
-  # Create the plot
-  ggplot(data, aes(x = time_interval, y = number_of_pickups)) +
-    geom_line(color = color) +  # Line plot with the specified color
-    labs(
-      title = paste("Uber Pickups Over Time -", dataset_name),
-      x = "Time",
-      y = "Number of Pickups"
-    ) +
-    theme_minimal()  # Apply a clean theme
-}
-```
-
-```{r}
-# Call the function for train_filtered_1000m_data
-plot_pickups_over_time(train_filtered_1000m_data, "train_filtered_1000m_data", "lightblue")
-```
-
-```{r}
-# Call the function for train_filtered_1000m_data
-plot_pickups_over_time(train_filtered_2000m_data, "train_filtered_2000m_data", "lightgreen")
-```
-Observations:
-* Both plots show frequent and regular peaks, indicating periods of high demand. The troughs (lower points) suggest moments of lower demand. This suggests a cyclic pattern, likely related to daily commuting hours or other temporal factors like weekends or holidays.
-
-* In the second plot (2000m data), the pickups range significantly higher (up to 500 pickups), while the 1000m data has a much lower maximum (around 150 pickups). This difference suggests that a wider radius (2000m) captures a larger area with more Uber activity, which is logical given the larger catchment area.
-
-* There's no obvious large seasonal shift over time in either plot, which means that, at least from this visual analysis, Uber demand is relatively stable over these months. The slight increase in variance towards the end of the plots (August and September) could be worth investigating further.
-
-
-So now lets look per month: Looking at the data per month helps to capture seasonal patterns or trends that might be lost when viewing all the data together. By breaking it down monthly, we can identify specific periods of high or low demand, spot any anomalies, and assess how Uber pickups fluctuate over time, which is critical for time-series analysis and forecasting.
-
-```{r}
-# Function to plot Uber pickups over time for each month
-plot_pickups_per_month <- function(data, color, dataset_name) {
-  # Add a 'month' column to the data for grouping by month
-  data$month <- format(as.Date(data$time_interval), "%Y-%m")
+  # Check if the monthly trend starts from May and remove rows before May for monthly trend
+  df <- df %>% mutate(monthly_avg = ifelse(time_interval >= as.Date("2014-05-01"), monthly_avg, NA))
   
-  # Loop through each unique month and plot the data
-  unique_months <- unique(data$month)
-  
-  for (month in unique_months) {
-    month_data <- data %>% filter(month == !!month) # Filter the data for each month
+  # Create a plot
+  ggplot(df, aes(x = time_interval)) +
+    # Plot the original data in blue
+    geom_line(aes(y = .data[[column]], color = "Original"), size = 0.5, alpha = 0.7, linetype = "solid", na.rm = TRUE) +
     
-    # Create the plot
-    p <- ggplot(month_data, aes(x = as.POSIXct(time_interval), y = number_of_pickups)) +
-      geom_line(color = color) +
-      labs(
-        title = paste("Uber Pickups Over Time -", month, "-", dataset_name),
-        x = "Time",
-        y = "Number of Pickups"
-      ) +
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-      scale_x_datetime(date_labels = "%d-%H:%M", date_breaks = "1 day")
+    # Plot the daily moving average in green
+    geom_line(aes(y = daily_avg, color = "Daily Trend"), size = 1, linetype = "solid", na.rm = TRUE) +
     
-    # Display the plot
-    print(p)
-  }
+    # Plot the weekly moving average in orange
+    geom_line(aes(y = weekly_avg, color = "Weekly Trend"), size = 1, linetype = "solid", na.rm = TRUE) +
+    
+    # Plot the monthly moving average in red, starting from May
+    geom_line(aes(y = monthly_avg, color = "Monthly Trend"), size = 1, linetype = "solid", na.rm = TRUE) +
+    
+    # Add labels and title
+    labs(title = paste("Original vs. Moving Averages (Daily, Weekly, Monthly) for", data_name),
+         x = "Time Interval", y = column) +
+    
+    # Theme adjustments
+    theme_minimal() +
+    
+    # Adding a legend and assigning colors
+    scale_color_manual(name = "Trends", 
+                       values = c("Original" = "blue", "Daily Trend" = "green", 
+                                  "Weekly Trend" = "orange", "Monthly Trend" = "red")) +
+    theme(legend.position = "right")  # Position the legend to the right
 }
+
 ```
 
 ```{r}
-plot_pickups_per_month(train_filtered_1000m_data, "lightblue", "1000m Data")
+plot_moving_averages(train_filtered_1000m_data, "number_of_pickups", "1000m Data")
 ```
+
+* Original Data (Blue): The blue line shows the raw Uber pickup data, with noticeable fluctuations and spikes during peak demand times in 15-minute intervals.
+
+* Daily Trend (Green): The daily moving average smooths out these spikes but still shows some day-to-day variations, keeping demand around 40-50 pickups.
+
+* Weekly Trend (Orange): This trend reveals more stability, showing gradual rises and falls, reflecting week-to-week fluctuations that stay close to the daily averages.
+
+* Monthly Trend (Red): The monthly moving average shows the overall long-term trend, highlighting a steady increase from April to July, followed by a slight decline in August.
+
+* Conclusions from Uber Pickup Data Analysis (1000m Radius around the Empire State Building):
+- High Short-Term Volatility: Significant spikes in 15-minute intervals reflect highly dynamic demand, likely driven by tourists, commuters, and events. This indicates the need for responsive driver allocation to handle demand surges.
+- Consistent Daily Demand: Despite short-term fluctuations, the daily trend remains stable at around 40-50 pickups per interval. This highlights the area's consistent ride demand, making it a reliable source for Uber activity.
+- Predictable Weekly Patterns: Weekly trends show stable fluctuations, suggesting that demand rises and falls predictably over the week, allowing for optimized driver scheduling based on day-to-day variations.
+- Seasonal Increase in Summer: The monthly trend indicates rising demand from April to July, peaking with the tourist season, followed by a slight decline in August. This pattern shows how seasonal tourism impacts Uber demand.
+
+* Final Takeaway:
+Uber demand in the Empire State area is dynamic but predictable across daily, weekly, and seasonal trends. By recognizing these patterns, Uber can improve driver availability and service efficiency, especially during peak tourist months and high-demand periods.
 
 ```{r}
-plot_pickups_per_month(train_filtered_2000m_data, "lightgreen", "2000m Data")
+plot_moving_averages(train_filtered_2000m_data, "number_of_pickups", "2000m Data")
 ```
 
-Observations: TODO
+The graph for the 2000-meter radius around the Empire State Building reveals several key insights into Uber demand:
 
+* Higher Demand Volatility:
+Similar to the 1000-meter radius, the original data (blue) shows significant short-term spikes in demand, but at a much larger scale. This area encompasses more of New York City, which could explain the larger fluctuations, reflecting a higher volume of pickups across a broader geographic area.
 
+* Consistent Daily and Weekly Patterns:
+The daily (green) and weekly (orange) trends reveal smoother, more stable patterns of demand, with gradual increases and decreases over time. These trends show consistent ride demand day-to-day and week-to-week, with more pronounced peaks during busier times.
+
+* Steady Growth with Monthly Trend:
+The monthly trend (red) shows a similar rising pattern from April to July as seen in the 1000-meter graph, but with larger peaks. This indicates that demand grows steadily in the summer months, peaking around July before tapering slightly in August and early September.
+
+* Insights:
+- Larger Area, Higher Demand: The increased fluctuations in the 2000-meter radius suggest that covering a broader area increases Uber demand. This makes sense, as this radius covers more tourist spots, business districts, and residential areas.
+- Smoother Long-Term Trends: Despite short-term volatility, the long-term trends show steady growth in demand, particularly during peak tourist and summer months.
+
+-------------
+
+הסבר בעברית:
+בגרף הראשון (1000m):
+
+הגרף מציג את הביקוש לנסיעות אובר בתוך רדיוס של 1000 מטר ממגדל האמפייר סטייט. הקו הכחול מייצג את הנתונים המקוריים, והקו הירוק, הכתום והאדום מייצגים את הממוצעים הנעים היומיים, השבועיים והחודשיים בהתאמה. רואים תנודות משמעותיות בביקוש לאורך כל התקופה, כאשר השיאים קורים בזמנים מסוימים של היום או עקב אירועים מקומיים. המגמה החודשית (אדום) מראה עלייה מתונה בביקוש עד יולי, ואחריה ירידה קלה באוגוסט וספטמבר (למרות שחסרים נתונים לחלק מספטמבר).
+
+בגרף השני (2000m ומעלה):
+
+הגרף מציג את הביקוש לנסיעות אובר מעבר לרדיוס של 2000 מטר ממגדל האמפייר סטייט. כמו בגרף הראשון, גם כאן יש תנודות משמעותיות בנתונים המקוריים (כחול), עם מגמות יומיות, שבועיות וחודשיות (ירוק, כתום, אדום). הביקוש כאן גבוה יותר ומכיל הרבה יותר תנודות לעומת הגרף הראשון, מה שמעיד על שטח רחב יותר שכולל יותר אזורים תיירותיים ואזורי עסקים. כמו בגרף הקודם, יש עלייה מתונה בביקוש עד יולי, ולאחר מכן ירידה מסוימת.
+
+----------------------
+
+##### Month, Day, Week
+
+The functions:
+
+Lets look at the sum pickups per month:
+Note: We will look only up till the month August because only 9 days are present for the month September in our data.
 ```{r}
 # Function to plot the behavior of a specific feature (e.g., pickups) per month
 plot_monthly_behavior <- function(data, feature, dataset_name, color) {
   # Convert time_interval to date format and extract month
   data$month <- format(as.Date(data$time_interval), "%Y-%m")
+  
+  # Filter the data to end in August
+  data <- data %>% filter(as.Date(paste0(month, "-01")) <= as.Date("2014-08-31"))
   
   # Summarize the total of the selected feature per month
   monthly_data <- data %>%
@@ -2382,683 +2421,521 @@ plot_monthly_behavior <- function(data, feature, dataset_name, color) {
 }
 ```
 
+
+Lets look at the sum pickups per week:
+
+Note: Our data ends on 9th of September, which is a Tuesday. This is why we limit the data to the last complete week, ending on Sunday, 09/07/2014. This way, we avoid including any partial weeks, which could distort the weekly trend.By ensuring we only analyze full weeks, we maintain the consistency and accuracy of the weekly behavior analysis.
+
+```{r}
+plot_weekly_behavior <- function(data, feature, dataset_name, color) {
+  # Convert time_interval to date format and extract the week number and year
+  data$week_start <- floor_date(as.Date(data$time_interval), unit = "week", week_start = 1)  # Ensure week starts on Monday
+  
+  # Filter the data to end on the last full week (before 09/07/2014)
+  data <- data %>% filter(week_start <= as.Date("2014-09-07"))
+  
+  # Summarize the total of the selected feature per week
+  weekly_data <- data %>%
+    group_by(week_start) %>%
+    summarise(total_value = sum(!!sym(feature), na.rm = TRUE)) %>%
+    ungroup()  # Ensure ungrouped output
+  
+  # Create a line plot to show the behavior of the selected feature per week
+  ggplot(weekly_data, aes(x = week_start, y = total_value, group = 1)) +
+    geom_line(color = color, size = 1) +
+    geom_point(color = color, size = 2) +
+    labs(
+      title = paste("Weekly Behavior of", feature, "-", dataset_name),
+      x = "Week",
+      y = paste("Total", feature)
+    ) +
+    scale_x_date(date_labels = "%d %b", date_breaks = "1 week") +  # Adjust x-axis to show dates
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+
+Lets look at the sum pickups per day:
+
+```{r}
+# Function to plot the behavior of a specific feature (e.g., pickups) per day
+plot_daily_behavior <- function(data, feature, dataset_name, color) {
+  # Convert time_interval to date format and extract the day
+  data$day <- format(as.Date(data$time_interval), "%Y-%m-%d")
+  
+  # Summarize the total of the selected feature per day
+  daily_data <- data %>%
+    group_by(day) %>%
+    summarise(total_value = sum(!!sym(feature), na.rm = TRUE))  # Use !!sym(feature) to pass the feature name dynamically
+  
+  # Create a line plot to show the behavior of the selected feature per day
+  ggplot(daily_data, aes(x = as.Date(day), y = total_value, group = 1)) +
+    geom_line(color = color, size = 1) +
+    geom_point(color = color, size = 2) +
+    labs(
+      title = paste("Daily Behavior of", feature, "-", dataset_name),
+      x = "Day",
+      y = paste("Total", feature)
+    ) +
+    theme_minimal() +
+    scale_x_date(date_labels = "%b %d", date_breaks = "4 days") +  # Show every 10 days on the x-axis
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Angle the text for readability
+}
+```
+
+Top 3 days with the lowest and highest total number of pickups:
+```{r}
+# Function to show top n days with lowest and highest total number of pickups
+plot_top_lowest_highest_pickups <- function(data, feature, color, dataset_name, n) {
+  
+  # Group by day and calculate the total number of pickups per day
+  daily_summary <- data %>%
+    group_by(day = as.Date(time_interval)) %>%
+    summarise(total_pickups = sum(!!sym(feature), na.rm = TRUE)) %>%
+    arrange(total_pickups)  # Sort by total_pickups
+  
+  # Get the top n days with the lowest pickups
+  lowest_n_days <- head(daily_summary, n)
+  
+  # Get the top n days with the highest pickups
+  highest_n_days <- tail(daily_summary, n)
+  
+  # Create bar plot for the lowest n days
+  plot_lowest <- ggplot(lowest_n_days, aes(x = reorder(day, total_pickups), y = total_pickups)) +
+    geom_bar(stat = "identity", color = "black", fill = color) +
+    labs(
+      title = paste("Top", n, "Days with Lowest Pickups -", dataset_name),
+      x = "Day",
+      y = "Total Pickups"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Create bar plot for the highest n days
+  plot_highest <- ggplot(highest_n_days, aes(x = reorder(day, -total_pickups), y = total_pickups)) +
+    geom_bar(stat = "identity", color = "black", fill = color) +
+    labs(
+      title = paste("Top", n, "Days with Highest Pickups -", dataset_name),
+      x = "Day",
+      y = "Total Pickups"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  return(list(lowest = plot_lowest, highest = plot_highest))
+}
+```
+
+----------------------------
+
+For the 1000m data:
+
+month:
 ```{r}
 # Call the function for 1000m data
 plot_monthly_behavior(train_filtered_1000m_data, "number_of_pickups", "1000m Data", "lightblue")
 ```
+
+week:
+```{r}
+# Call the function for 1000m data
+plot_weekly_behavior(train_filtered_1000m_data, "number_of_pickups", "1000m Data", "lightblue")
+```
+
+day:
+```{r}
+# Call the function for 1000m data
+plot_daily_behavior(train_filtered_1000m_data, "number_of_pickups", "1000m Data", "lightblue")
+```
+
+```{r}
+plots <- plot_top_lowest_highest_pickups(train_filtered_1000m_data, "number_of_pickups", "lightblue", "1000m Data", 5)
+plots
+```
+
+The monthly, weekly, and daily graphs reveal notable patterns regarding Uber demand:
+
+* Monthly Behavior:
+- There is a clear increase in demand from April to July, peaking in July, followed by a decline in August.
+- The peak in July could be associated with the summer months when tourism and activity in New York City are at their highest.
+
+* Weekly Behavior:
+- The week starting on June 30th shows a significant drop in Uber pickups, which corresponds with the slight decline seen in the June monthly behavior.
+- After this, there is a sharp rise in demand during the week of July 14th, which may contribute to the July peak in the monthly behavior.
+- The sharp decline during the week of August 25th likely explains the overall drop observed in August.
+
+* Daily Behavior:
+- The daily chart shows a relatively consistent pattern with periodic spikes, indicating some days experience significantly higher demand than others.
+- The periodic nature of these spikes might indicate certain recurring events, possibly weekends or holidays, driving these fluctuations.
+
+* Daily Picks:
+(If these events were one-time occurrences, they might be considered outliers in the data, as they caused an unusual spike in transportation demand on those particular days.)
+- On May 1, 2014, the Empire State Building celebrated its 83rd anniversary. the Empire State Building often hosts celebrations involving special lighting, VIP tours, or other commemorative activities around May 1, the anniversary date. This is probably the reason for the high demand for Uber on April 30.
+- On July 15, 2014, one major event in New York was Bruno Mars' concert at Madison Square Garden, which was part of his "Moonshine Jungle Tour." This event likely contributed to the spike in Uber pickups, as concerts at such a large venue can draw significant crowds, increasing the need for transportation services. 
+- Regarding September 5, 2014, this date coincides with the US Open Tennis Championships, which take place annually in New York at Flushing Meadows. This major international sporting event attracts tens of thousands of spectators, which would have increased transportation demand, explaining the higher Uber pickup numbers.
+- On April 6, 2014, New York City hosted several cultural and free events, one of the most notable being the New York Tartan Day Parade, celebrating Scottish heritage with thousands of people lining the streets of Manhattan. The parade featured bagpipers, dancers, and other Scottish cultural displays, which drew large crowds. In addition, there was the ongoing New York International Auto Show, attracting visitors to see the latest trends in the automotive industry. These large-scale events likely influenced transportation patterns in the city, possibly contributing to a reduction in Uber pickups as people opted for public transportation or walked to central event areas.
+- 
+- 
+
+
+In summary, the stronger periods for Uber demand are found in the summer months, particularly in July, with sharp drops around late June and late August. The weekly and daily charts provide more detailed insights into these fluctuations, where the drop in late June corresponds to the monthly decline in June, and the spike in July aligns with the overall summer peak.
+
+בעברית: 
+הגרפים החודשיים, השבועיים והיומיים מגלים תבניות מעניינות לגבי הביקוש לאובר:
+
+התנהגות חודשית:
+יש עלייה ברורה בביקוש מאפריל ועד יולי, כשהשיא ביולי ולאחר מכן ירידה באוגוסט.
+השיא ביולי עשוי להיות קשור לעונת הקיץ, כשיש יותר תיירים ופעילות בעיר ניו יורק.
+
+התנהגות שבועית:
+בשבוע שמתחיל ב- 30 ביוני יש ירידה משמעותית במספר ההזמנות, דבר שמתאים לירידה הקלה שראינו בגרף של יוני.
+לאחר מכן יש עלייה חדה בביקוש במהלך השבוע של 14 ביולי, מה שמסביר את השיא בגרף החודשי של יולי.
+הירידה החדה במהלך השבוע של 25 באוגוסט כנראה מסבירה את הירידה הכוללת שנראתה באוגוסט.
+
+התנהגות יומית:
+הגרף היומי מראה דפוס קבוע יחסית עם קפיצות תקופתיות, דבר שמרמז כי ישנם ימים שבהם הביקוש גבוה משמעותית מאחרים.
+הקפיצות הללו יכולות להצביע על אירועים חוזרים, אולי סופי שבוע או חגים, שמובילים לשינויים בביקוש.
+
+פיקים יומים:
+
+
+לסיכום, התקופות החזקות בביקוש לאובר הן בחודשי הקיץ, בעיקר ביולי, עם ירידות חדות בסוף יוני ובסוף אוגוסט. הגרפים השבועיים והיומיים מספקים תובנות מפורטות יותר, שבהן הירידה בסוף יוני קשורה לירידה ביוני, והעלייה ביולי תואמת לשיא הקיץ הכללי.
+
+----------------------------
+
+For the 2000m data:
+
+month:
 ```{r}
 # Call the function for 2000m data
 plot_monthly_behavior(train_filtered_2000m_data, "number_of_pickups", "2000m Data", "lightgreen")
 ```
-Note: There is a sharp drop in September because only 9 days are present for that month in the dataset, whereas the other months represent full months.
 
-Here is the code to show the number of days in each month:
+week:
 ```{r}
-# Function to calculate the number of days present in each month
-count_days_per_month <- function(data, dataset_name) {
-  data %>%
-    mutate(month = format(time_interval, "%Y-%m")) %>%
-    group_by(month) %>%
-    summarize(number_of_days = n_distinct(as.Date(time_interval))) %>%
-    arrange(month) %>%
-    print(paste("Number of days per month -", dataset_name))
-}
+# Call the function for 2000m data
+plot_weekly_behavior(train_filtered_2000m_data, "number_of_pickups", "2000m Data", "lightgreen")
+```
+
+day:
+```{r}
+# Call the function for 2000m data
+plot_daily_behavior(train_filtered_2000m_data, "number_of_pickups", "2000m Data", "lightgreen")
 ```
 
 ```{r}
-# Call the function for train_filtered_1000m_data
-count_days_per_month(train_filtered_1000m_data, "1000m Data")
+plots <- plot_top_lowest_highest_pickups(train_filtered_2000m_data, "number_of_pickups", "lightgreen", "2000m Data", 5)
+plots
 ```
 
-```{r}
-# Call the function for train_filtered_2000m_data
-count_days_per_month(train_filtered_2000m_data, "2000m Data")
-```
+The monthly, weekly, and daily graphs reveal notable patterns regarding Uber demand:
+
+* Monthly Behavior:
+
+
+* Weekly Behavior:
+
+
+* Daily Behavior:
+
+* Daily Picks:
+ 
+In summary,
+
+----------------------------
+
 SO: Overall, the demand for Uber appears to be on the rise, except for a small decrease observed in June. We will later investigate what might have caused this dip in demand during that month to understand if any specific factors contributed to it.
 
-Lets try and see why:
-Let's take a look at the taxis' pickup behavior as well:
+----------------------------
+
+##### Taxis
+
+For the 1000m data:
+
+month:
 ```{r}
+# Call the function for 1000m data
 plot_monthly_behavior(train_filtered_1000m_data, "taxis_pickup_count", "1000m Data", "lightblue")
 ```
 
+week:
 ```{r}
+# Call the function for 1000m data
+plot_weekly_behavior(train_filtered_1000m_data, "taxis_pickup_count", "1000m Data", "lightblue")
+```
+
+day:
+```{r}
+# Call the function for 1000m data
+plot_daily_behavior(train_filtered_1000m_data, "taxis_pickup_count", "1000m Data", "lightblue")
+```
+
+```{r}
+plots <- plot_top_lowest_highest_pickups(train_filtered_1000m_data, "taxis_pickup_count", "lightblue", "1000m Data", 5)
+plots
+```
+
+
+----------------------------
+
+For the 2000m data:
+
+month:
+```{r}
+# Call the function for 1000m data
 plot_monthly_behavior(train_filtered_2000m_data, "taxis_pickup_count", "2000m Data", "lightgreen")
 ```
-Like Uber, the demand for yellow taxis also decreased slightly in June (although the drop was not as significant as for Uber, there was still a small decline). We speculate that this happened because June is considered to have the most pleasant weather in New York-it's not too hot for walking and not too cold or rainy to necessitate taking an Uber or taxi. Later, we will see that June falls in the middle in terms of humidity, feels-like temperature, and the number of rainy days compared to other months (though our view of September is limited, as we only have data for the first nine days of the month).
 
-Additionally, June is often a transitional period between the spring tourist season and the summer peak, which might result in a slight dip in overall transportation demand as tourism slows down before ramping up again in July and August. This could explain why both Uber and yellow taxi demand softened during this month.
+week:
+```{r}
+# Call the function for 1000m data
+plot_weekly_behavior(train_filtered_2000m_data, "taxis_pickup_count", "2000m Data", "lightgreen")
+```
 
-However, the drop in yellow taxi demand was smaller than Uber's because taxis were still more popular than Uber in 2014, especially in New York City. At the time, yellow taxis dominated the on-demand transportation market, with their well-established presence and infrastructure, while Uber was still gaining ground.
+day:
+```{r}
+# Call the function for 1000m data
+plot_daily_behavior(train_filtered_2000m_data, "taxis_pickup_count", "2000m Data", "lightgreen")
+```
+
+```{r}
+plots <- plot_top_lowest_highest_pickups(train_filtered_2000m_data, "taxis_pickup_count", "lightgreen", "2000m Data", 5)
+plots
+```
+
 
 ------------
 
-Plot for the number of rainy days per month:
+Function that creates a dual-axis plot, where one axis shows the number of Uber pickups and the other shows another feature for each day & week & month:
 ```{r}
-# Function to plot the number of rainy days per month
-plot_rainy_days_by_month <- function(data, color, data_name) {
+# Function to plot daily, weekly, and monthly behavior with dual y-axes
+plot_behavior_dual_axis <- function(data, feature, dataset_name, color_pickups, color_feature) {
   
-  # Add a 'date' column to the data for grouping by day
-  data <- data %>%
-    mutate(date = as.Date(time_interval))  # Extract the date from the time_interval
+  # Add day, week, and month columns for aggregation
+  data$day <- as.Date(data$time_interval)
+  data$week_start <- floor_date(as.Date(data$time_interval), unit = "week", week_start = 1)
+  data$month <- format(as.Date(data$time_interval), "%Y-%m")
   
-  # Group by date and determine if it rained on that day (at least one interval had rain)
-  rainy_days <- data %>%
-    group_by(date) %>%
-    summarise(rained = max(is_raining_last_hour)) %>%  # Check if it rained in any time interval
-    filter(rained == 1)  # Filter to keep only rainy days
+  # Filter to include only full weeks and months
+  data_week <- data %>% filter(week_start <= as.Date("2014-09-07"))
+  data_month <- data %>% filter(as.Date(paste0(month, "-01")) <= as.Date("2014-08-31"))
   
-  # Add a 'month' column for grouping by month
-  rainy_days <- rainy_days %>%
-    mutate(month = format(date, "%Y-%m"))
-  
-  # Count the number of rainy days per month
-  rainy_days_per_month <- rainy_days %>%
-    group_by(month) %>%
-    summarise(number_of_rainy_days = n())
-  
-  # Create the plot
-  ggplot(rainy_days_per_month, aes(x = month, y = number_of_rainy_days)) +
-    geom_bar(stat = "identity", fill = color, color = "black") +
-    labs(
-      title = paste("Number of Rainy Days per Month -", data_name),
-      x = "Month",
-      y = "Number of Rainy Days"
-    ) +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-}
-```
-
-```{r}
-plot_rainy_days_by_month(train_filtered_1000m_data, "lightblue", "1000m Data")
-```
-```{r}
-plot_rainy_days_by_month(train_filtered_2000m_data, "lightgreen", "2000m Data")
-```
-
-------------
-
-Here's a function that plots the mean feature of feels_like & humidity for each month. This temperature accounts for the human perception of weather:
-```{r}
-# Function to plot the mean weather feature for each month
-plot_mean_feature_by_month <- function(data, feature, color, data_name) {
-  
-  # Add a 'month' column to the data for grouping by month
-  data <- data %>%
-    mutate(month = floor_date(time_interval, "month"))
-  
-  # Calculate the mean of the specific feature per month
-  feature_means <- data %>%
-    group_by(month) %>%
-    summarise(
-      mean_feature = mean(.data[[feature]], na.rm = TRUE)  # Use the feature argument
-    )
-  
-  # Create a plot to visualize the mean feature per month
-  ggplot(feature_means, aes(x = as.factor(month), y = mean_feature)) +
-    geom_bar(stat = "identity", fill = color, color = "black") +
-    labs(
-      title = paste("Mean", feature, "Per Month -", data_name),
-      x = "Month",
-      y = paste("Mean", feature)
-    ) +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-}
-
-
-```
-
-```{r}
-plot_mean_feature_by_month(train_filtered_1000m_data, "feels_like", "lightblue", "1000m Data")
-```
-
-```{r}
-plot_mean_feature_by_month(train_filtered_2000m_data, "feels_like", "lightgreen", "2000m Data")
-```
-
-```{r}
-plot_mean_feature_by_month(train_filtered_1000m_data, "humidity", "lightblue", "1000m Data")
-```
-
-```{r}
-plot_mean_feature_by_month(train_filtered_2000m_data, "humidity", "lightgreen", "2000m Data")
-```
-
-------------
-
-Holidays count in every month:
-```{r}
-# Function to count holidays per month and display as a box plot
-count_holidays_by_month <- function(data, color, data_name) {
-  
-  # Add a 'month' column to the data for grouping by month
-  data <- data %>%
-    mutate(month = floor_date(time_interval, "month"))
-  
-  # Count the number of holidays (Memorial Day, Independence Day, Labor Day) per month
-  holiday_counts <- data %>%
-    group_by(month) %>%
-    summarise(
-      total_holidays = sum(memorial_day + independence_day + labor_day)
-    )
-  
-  # Create a box plot to visualize holiday counts per month
-  ggplot(holiday_counts, aes(x = as.factor(month), y = total_holidays)) +
-    geom_boxplot(fill = color, color = color) +
-    labs(
-      title = paste("Holiday Counts Per Month -", data_name),
-      x = "Month",
-      y = "Number of Holidays"
-    ) +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-}
-```
-
-```{r}
-count_holidays_by_month(train_filtered_1000m_data, "lightblue", "1000m Data")
-```
-
-```{r}
-count_holidays_by_month(train_filtered_2000m_data, "lightgreen", "2000m Data")
-```
-
-------------
-
-Sum of: event_count, number_of_crashes, total_arrests in every month:
-```{r}
-# Define the function to create the box plot for any feature's sum by month
-plot_feature_sum_by_month <- function(data, feature, color, data_name) {
-  
-  # Extract the month from the time_interval
-  data <- data %>%
-    mutate(month = format(as.Date(time_interval), "%Y-%m"))
-  
-  # Group by month and calculate the sum of the given feature for each month
-  monthly_feature_sum <- data %>%
-    group_by(month) %>%
-    summarise(feature_sum = sum(.data[[feature]], na.rm = TRUE))
-  
-  # Create the box plot
-  ggplot(monthly_feature_sum, aes(x = month, y = feature_sum)) +
-    geom_boxplot(fill = color, color = color) +
-    scale_y_continuous(labels = comma) +  # Format the y-axis to avoid scientific notation
-    labs(
-      title = paste("Sum of", feature, "by Month for", data_name),
-      x = "Month",
-      y = paste("Sum of", feature)
-    ) +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate the x-axis labels for better readability
-}
-```
-
-```{r}
-plot_feature_sum_by_month(train_filtered_1000m_data, "event_count", "lightblue", "1000m Data")
-```
-
-```{r}
-plot_feature_sum_by_month(train_filtered_2000m_data, "event_count", "lightgreen", "2000m Data")
-```
-
-```{r}
-plot_feature_sum_by_month(train_filtered_1000m_data, "number_of_crashes", "lightblue", "1000m Data")
-```
-
-```{r}
-plot_feature_sum_by_month(train_filtered_2000m_data, "number_of_crashes", "lightgreen", "2000m Data")
-```
-
-```{r}
-plot_feature_sum_by_month(train_filtered_1000m_data, "total_arrests", "lightblue", "1000m Data")
-```
-
-```{r}
-plot_feature_sum_by_month(train_filtered_2000m_data, "total_arrests", "lightgreen", "2000m Data")
-```
-
-------------
-###### How Does Rain Affect Uber Demand?
-
-Let calculate the number of intervals where it is raining and where it is not:
-```{r}
-# Function to calculate the amount of intervals with a specific feature condition
-calculate_intervals <- function(data, feature) {
-  
-  # Count the number of intervals where the feature is true and where it is false
-  intervals_summary <- data %>%
-    summarise(
-      intervals_with_condition = sum(!!sym(feature) == 1, na.rm = TRUE),
-      intervals_without_condition = sum(!!sym(feature) == 0, na.rm = TRUE)
-    )
-  
-  # Return the result
-  return(intervals_summary)
-}
-```
-
-```{r}
-calculate_intervals(train_filtered_1000m_data, "is_raining_last_hour")
-```
-
-```{r}
-calculate_intervals(train_filtered_2000m_data, "is_raining_last_hour")
-```
-
-We can see that our data is not balanced. There are significantly more time intervals without rain than with rain, which makes sense since most of the months we are looking at are during the spring and summer seasons.
-
-Since our data is imbalanced, with many more time intervals without rain than with rain, directly comparing the raw counts of Uber pickups would not provide a fair analysis of how rain affects demand. By using percentages, we can normalize the data and accurately assess the proportionate effect of rain on Uber demand. This approach ensures that we account for the disparity in the number of rainy and non-rainy intervals and provides a clearer comparison. 
-```{r}
-# Function to compare Uber demand during intervals with or without a specific feature using percentages
-plot_uber_demand_by_feature <- function(data, feature, dataset_name, color) {
-  
-  # Group data by the given feature condition and calculate the total pickups and number of intervals
-  feature_summary <- data %>%
-    group_by(!!sym(feature)) %>%
+  # Summarize daily, weekly, and monthly data
+  daily_data <- data %>%
+    group_by(day) %>%
     summarise(
       total_pickups = sum(number_of_pickups, na.rm = TRUE),
-      num_intervals = n()
+      total_feature = sum(!!sym(feature), na.rm = TRUE)
     )
   
-  # Calculate the percentage of total pickups for intervals with and without the feature
-  feature_summary <- feature_summary %>%
-    mutate(pickup_percentage = (total_pickups / sum(total_pickups)) * 100)
+  weekly_data <- data_week %>%
+    group_by(week_start) %>%
+    summarise(
+      total_pickups = sum(number_of_pickups, na.rm = TRUE),
+      total_feature = sum(!!sym(feature), na.rm = TRUE)
+    )
   
-  # Label for feature condition
-  feature_summary[[feature]] <- factor(feature_summary[[feature]], 
-                                       levels = c(0, 1), 
-                                       labels = c(paste("No", feature), feature))
+  monthly_data <- data_month %>%
+    group_by(month) %>%
+    summarise(
+      total_pickups = sum(number_of_pickups, na.rm = TRUE),
+      total_feature = sum(!!sym(feature), na.rm = TRUE)
+    )
   
-  # Create a bar plot to show percentage of Uber pickups during intervals with and without the feature
-  ggplot(feature_summary, aes(x = !!sym(feature), y = pickup_percentage, fill = !!sym(feature))) +
-    geom_bar(stat = "identity", color = "black", fill = color) +
+  # Function to create the dual-axis plot
+  plot_dual <- function(data, x_col, x_label, title) {
+    ggplot(data, aes(x = !!sym(x_col), group = 1)) +  # Adding group = 1 for proper line connection
+      geom_line(aes(y = total_pickups, color = "Total Pickups"), size = 1) +
+      geom_point(aes(y = total_pickups, color = "Total Pickups"), size = 2) +
+      geom_line(aes(y = total_feature, color = "Total Feature"), size = 1, linetype = "dashed") +
+      geom_point(aes(y = total_feature, color = "Total Feature"), size = 2) +
+      scale_y_continuous(
+        name = "Total Number of Pickups",
+        sec.axis = sec_axis(~., name = paste("Total", feature))  # Secondary axis for feature
+      ) +
+      labs(
+        title = title,
+        x = x_label
+      ) +
+      scale_color_manual(name = "Trends", 
+                         values = c("Total Feature" = color_feature, "Total Pickups" = color_pickups)) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            axis.title.y.right = element_text(color = color_feature),
+            axis.title.y.left = element_text(color = color_pickups),
+            legend.position = "right")  # Position legend on the right
+  }
+  
+  # Create plots for daily, weekly, and monthly behavior
+  daily_plot <- plot_dual(daily_data, "day", "Day", paste("Daily Behavior of Pickups and", feature, "-", dataset_name))
+  weekly_plot <- plot_dual(weekly_data, "week_start", "Week", paste("Weekly Behavior of Pickups and", feature, "-", dataset_name))
+  monthly_plot <- plot_dual(monthly_data, "month", "Month", paste("Monthly Behavior of Pickups and", feature, "-", dataset_name))
+  
+  return(list(daily_plot = daily_plot, weekly_plot = weekly_plot, monthly_plot = monthly_plot))
+}
+```
+
+------------
+
+Lets look at the taxis & uber at the same plot:
+
+```{r}
+#todo
+```
+
+
+------------
+
+##### Holidays
+
+Now we will look at the days when there were holidays and see their behavior regarding Uber demand.
+Are there changes in demand? Do all holidays behave the same?
+
+```{r}
+#todo
+```
+
+
+------------
+
+##### Rain
+
+We will say that a day is rainy if it had more than two hours of rain, that is, a day in which there are 8 intervals of 15 minutes with is_raining_last_hour = 1 is considered a rainy day. 
+We would like to check on a graph how rainy days affect the demand for rain
+```{r}
+#todo
+```
+
+
+
+------------
+
+##### Weekends VS weekdays
+We would like to understand if weekends have an effect on demand for Uber
+```{r}
+#todo
+```
+
+
+
+
+------------
+
+##### humidity
+```{r}
+#todo
+```
+
+
+
+------------
+
+##### Arrest
+
+for 1000:
+```{r}
+plots <- plot_behavior_dual_axis(train_filtered_1000m_data, "total_arrests", "1000m Data", "lightblue", "blue")
+plots
+```
+
+for 2000:
+```{r}
+plots <- plot_behavior_dual_axis(train_filtered_2000m_data, "total_arrests", "2000m Data", "lightgreen", "green")
+plots
+```
+
+---------------
+
+##### Events
+
+```{r}
+# Function to create Event Clustering Visualization
+event_clustering_visualization <- function(data, dataset_name, color_low, color_mid, color_high) {
+  
+  # Classify days based on total event counts into low, moderate, and high clusters
+  data <- data %>%
+    group_by(day = as.Date(time_interval)) %>%
+    summarise(
+      total_events = sum(event_count, na.rm = TRUE),
+      total_pickups = sum(number_of_pickups, na.rm = TRUE)
+    ) %>%
+    mutate(
+      event_cluster = case_when(
+        total_events <= quantile(total_events, 0.33) ~ "Low",
+        total_events <= quantile(total_events, 0.66) ~ "Moderate",
+        TRUE ~ "High"
+      )
+    )
+  
+  # Create a scatter plot to visualize clusters
+  ggplot(data, aes(x = total_events, y = total_pickups, color = event_cluster)) +
+    geom_point(size = 3) +
+    scale_color_manual(values = c("Low" = color_low, "Moderate" = color_mid, "High" = color_high)) +
     labs(
-      title = paste("Uber Demand by", feature, "-", dataset_name),
-      x = paste(feature, "Condition"),
-      y = "Percentage of Total Uber Pickups (%)"
+      title = paste("Event Clustering vs Uber Demand -", dataset_name),
+      x = "Total Events",
+      y = "Total Uber Pickups",
+      color = "Event Clusters"
     ) +
     theme_minimal() +
-    scale_y_continuous(limits = c(0, 100), labels = scales::percent_format(scale = 1)) +  # Ensures y-axis always ranges from 0 to 100%
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(legend.position = "right")
 }
 ```
 
+for 1000m:
 ```{r}
-plot_uber_demand_by_feature(train_filtered_1000m_data, "is_raining_last_hour", "1000m Data", "lightblue")
-```
-```{r}
-plot_uber_demand_by_feature(train_filtered_1000m_data, "is_raining_last_hour", "2000m Data", "lightgreen")
+event_clustering_visualization(train_filtered_1000m_data, "1000m Data", "blue", "yellow", "red")
 ```
 
-From the charts, we can observe that Uber demand is higher during non-rainy intervals compared to rainy intervals.
-
-In both the 1000m and 2000m data:
-* The percentage of Uber pickups during non-rainy periods overwhelmingly dominates, making up more than 75% of the total demand.
-* Meanwhile, the percentage of Uber pickups during rainy periods is much lower, accounting for less than 25% of total pickups.
-
-This may suggest that rain, while having an effect on demand, does not substantially increase the number of Uber pickups. This could be because most of the months we're analyzing fall within the spring and summer seasons, where rainy intervals are less frequent. Additionally, in pleasant weather, people may prefer alternative modes of transportation, such as walking, rather than using Uber. However, when it does rain, there is still some observable increase in demand, but it is not as pronounced as one might expect.
-
-------------
-
-###### How Does Weekends Affect Uber Demand?
-
+for 2000m:
 ```{r}
-calculate_intervals(train_filtered_1000m_data, "is_weekend")
-```
-
-```{r}
-calculate_intervals(train_filtered_2000m_data, "is_weekend")
-```
-
-We can see that our data is not balanced. There are more time intervals that are not weekends, which makes sense since most of the days in the week do not represent a weekend.
-
-Also here we will look at the %:
-```{r}
-plot_uber_demand_by_feature(train_filtered_1000m_data, "is_weekend", "1000m Data", "lightblue")
-```
-
-```{r}
-plot_uber_demand_by_feature(train_filtered_1000m_data, "is_weekend", "2000m Data", "lightgreen")
-```
-
-The charts show that the demand for Uber is significantly higher on weekdays compared to weekends. This makes sense because during the week, people are commuting to work, attending meetings, running errands, and generally have more reasons to move around the city. As a result, Uber becomes a convenient mode of transportation to navigate New York's busy streets.
-
-On the other hand, weekends generally have a lower demand for Uber as people might be more likely to relax, stay at home, or use alternative transportation options, especially for leisure activities.
-
-------------
-
-###### How Does the time of the day Affect Uber Demand?
-```{r}
-calculate_intervals(train_filtered_1000m_data, "is_night")
-```
-
-```{r}
-calculate_intervals(train_filtered_2000m_data, "is_night")
-```
-
-In terms of time of day, the data is quite balanced: that is, there is almost the same amount of night and evening intervals. But to be more precise, we would still prefer to look at the %:
-```{r}
-plot_uber_demand_by_feature(train_filtered_1000m_data, "is_night", "1000m Data", "lightblue")
-```
-
-```{r}
-plot_uber_demand_by_feature(train_filtered_1000m_data, "is_night", "2000m Data", "lightgreen")
+event_clustering_visualization(train_filtered_2000m_data, "2000m Data", "blue", "yellow", "red")
 ```
 
 
-From the charts, we can observe the following insights regarding how the time of day affects Uber demand:
+---------------
 
-* Demand is significantly higher during the day (non-night intervals): In both the 1000m and 2000m datasets, more than 50% of Uber pickups occur during the day. This makes sense because people are typically commuting, running errands, or engaging in daytime activities during these hours. Daytime tends to be busier, especially in a city like New York, where daytime demand for transportation is generally high.
-
-* Lower demand at night: Nighttime Uber demand is noticeably lower, accounting for less than 50% of total pickups. While there is still demand during night hours (due to activities like dining out, nightlife, or late commutes), the overall volume is lower compared to the daytime.
-
-This suggests that Uber is predominantly used during the day, likely due to regular work-related commutes or daytime activities, while nighttime Uber usage caters to a smaller, more specific set of needs like going out for social events.
+##### Feels like
 
 
 ```{r}
-train_filtered_1000m_data
-```
-
-------------
-###### Holiday
-
-------------
-
-###### Crashes
-
-```{r}
-plot_dual_axis <- function(df, pickup_color, crash_color, window = 4) {
-  # Calculate rolling means
-  df$rolling_pickups <- zoo::rollmean(df$number_of_pickups, window, fill = NA)
-  df$rolling_crashes <- zoo::rollmean(df$number_of_crashes, window, fill = NA)
+# Function to plot Feels Like Temperature vs Uber Demand per week
+plot_feels_like_vs_pickups_weekly <- function(data, dataset_name, color) {
   
-  # Remove NA values for plotting
-  df_clean <- na.omit(df)
+  # Summarize weekly feels_like and number_of_pickups
+  weekly_data <- data %>%
+    group_by(week = floor_date(as.Date(time_interval), "week")) %>%
+    summarise(
+      avg_feels_like = mean(feels_like, na.rm = TRUE),
+      total_pickups = sum(number_of_pickups, na.rm = TRUE)
+    )
   
-  # Create scaling factor to match the ranges of pickups and crashes for visual comparison
-  scaleFactor <- max(df_clean$rolling_pickups, na.rm = TRUE) / max(df_clean$rolling_crashes, na.rm = TRUE)
-
-  # Plot with two y-axes
-  ggplot(df_clean, aes(x = time_interval)) +
-    # Left y-axis for pickups
-    geom_line(aes(y = rolling_pickups), size = 1, color = pickup_color) +
-    # Right y-axis for crashes (scaled)
-    geom_line(aes(y = rolling_crashes * scaleFactor), size = 1, color = crash_color) +
-    
-    # Labels and titles
-    labs(title = paste("Rolling Mean of Pickups and Crashes (Window =", window, ")"),
-         x = "Time Interval", y = "Rolling Mean of Pickups") +
-    
-    # Right y-axis scale for crashes
-    scale_y_continuous(sec.axis = sec_axis(~./scaleFactor, name = "Rolling Mean of Crashes")) +
-    
-    # Annotations for color representation
-    annotate("text", x = min(df_clean$time_interval), y = max(df_clean$rolling_pickups, na.rm = TRUE), 
-             label = "Pickups", color = pickup_color, size = 5, hjust = 0) +
-    annotate("text", x = min(df_clean$time_interval), y = max(df_clean$rolling_pickups, na.rm = TRUE) * 0.95, 
-             label = "Crashes", color = crash_color, size = 5, hjust = 0) +
-    
-    theme_minimal()
-}
-```
-
-```{r}
-plot_dual_axis(train_filtered_1000m_data, "#2bcff3", "#4f9ff3", window = 28)
-```
-Why Window = 28?
-* Each day from 17:00 to 00:00 has 7 hours.
-* With 4 intervals per hour (since each interval is 15 minutes), the total number of intervals per day is:
-7 hours � 4 intervals per hour = 28 intervals per day
-
-Thus, a window of 28 means we are calculating a rolling mean over an entire day (from 17:00 to 00:00). This window size smooths out fluctuations within each day, helping to reveal daily trends in the data.
-
-```{r}
-plot_dual_axis(train_filtered_1000m_data, "#2bcff3", "#4f9ff3", window = 196)
-```
-Calculation for a 7-Day Window:
-28 intervals per day � 7 days per week = 196 intervals
-a window of 196 would calculate the rolling mean across an entire week.
-
-
-
-------------
-
-#### TODO - FIX FROM DOWN HERE:
-2. Number of Pickups vs. Temperature
-Temperature has a strong impact on people's decision to use Uber, especially during extreme weather conditions.
-```{r}
-# Define a function to create the scatter plot for "temp" vs "number_of_pickups"
-plot_temp_vs_pickups <- function(data, dataset_name) {
-  ggplot(data, aes(x = temp, y = number_of_pickups)) +
-    geom_point(alpha = 0.5) +
-    geom_smooth(method = "lm", color = "red") +
+  # Create plot with color gradient for feels_like temperature
+  ggplot(weekly_data, aes(x = week)) +
+    geom_line(aes(y = total_pickups), color = color, size = 1) +  # Pickups line in blue
+    geom_point(aes(y = total_pickups, color = avg_feels_like), size = 3) +  # Points colored by feels_like
+    scale_color_gradient(low = "blue", high = "red", name = "Feels Like (°C)") +  # Temperature gradient
     labs(
-      title = paste("Number of Pickups vs. Temperature -", dataset_name),
-      x = "Temperature (°C)",
-      y = "Number of Pickups"
-    )
-}
-
-# Call the function for train_filtered_1000m_data_cleaned
-plot_temp_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
-
-# Call the function for train_filtered_2000m_data_cleaned
-plot_temp_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
-
-```
-todo fix explanations and graph
-train_filtered_1000m_data:
-Spread of Data: The points are widely scattered, indicating that temperature alone does not have a strong, clear impact on the number of pickups. There is significant variation in the number of pickups across all temperature ranges.
-
-Slight Positive Trend: The red line, which represents the linear regression fit, shows a slight upward trend, indicating a weak positive correlation between temperature and the number of pickups. As temperature increases, there is a small increase in the number of pickups, but the relationship is not very strong.
-
-Variability Across Temperatures: There are high variances in the number of pickups at all temperature levels. This suggests that other factors (e.g., rain, time of day) might influence Uber demand more than temperature alone.
-
-Summary:
-While there is a slight positive relationship between temperature and Uber pickups, the effect of temperature seems minimal. Other factors may have a stronger influence on demand in New York City, as indicated by the high variability in the number of pickups at all temperature levels.
-
-
-train_filtered_2000m_data:
-General Trend:
-The red line represents a linear regression, showing a slight positive correlation between temperature and the number of Uber pickups. As the temperature increases, the number of pickups tends to increase slightly.
-
-Data Spread:
-The data points are widely scattered, indicating significant variability in Uber pickups across different temperature ranges. This suggests that while temperature has some impact on the number of pickups, other factors may play a larger role in driving demand.
-
-Pickup Clusters:
-The majority of pickups are clustered between 200 to 300 pickups across various temperature levels, indicating relatively stable demand regardless of temperature.
-There are a few extreme values above 400 pickups, but these are less frequent and spread across the entire temperature range.
-
-Summary:
-The plot indicates a weak but positive relationship between temperature and the number of pickups. While the number of pickups tends to increase slightly with rising temperatures, the wide spread of data suggests that temperature alone does not have a strong predictive power on Uber demand. Other factors likely play a more significant role.
-
-
-
-3. Number of Pickups vs. Rain (is_raining_last_hour)
-Rain has a direct effect on Uber pickups as people tend to avoid walking in rainy weather.
-
-```{r}
-# Define a function to create the boxplot for "is_raining_last_hour" vs "number_of_pickups"
-plot_rain_vs_pickups <- function(data, dataset_name) {
-  ggplot(data, aes(x = factor(is_raining_last_hour), y = number_of_pickups)) +
-    geom_boxplot() +
-    labs(
-      title = paste("Number of Pickups vs. Rain -", dataset_name),
-      x = "Rain in the Last Hour (0: No, 1: Yes)",
-      y = "Number of Pickups"
-    )
-}
-
-# Call the function for train_filtered_1000m_data_cleaned
-plot_rain_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
-
-# Call the function for train_filtered_2000m_data_cleaned
-plot_rain_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
-```
-todo fix explanations
-train_filtered_1000m_data:
-Rain Effect:
-When it rains (1), the median number of pickups is higher compared to when it does not rain (0). This suggests that rain generally increases the demand for Uber rides.
-Spread and Variability:
-
-The range of the number of pickups is wider during rainy periods, with more outliers above 100 pickups. This indicates that some rainy periods lead to a significant spike in Uber demand.
-Without rain, the distribution is more compact, with fewer outliers and a lower median.
-
-Outliers:
-Both when it rains and doesn’t rain, there are outliers (higher pickup numbers). However, there are more extreme values (pickups above 150) when it rains, indicating that rain can sometimes cause a significant increase in demand.
-
-Summary:
-The plot confirms that rain increases the number of Uber pickups. The median and upper ranges of pickups are higher when it rains, and the distribution suggests more variability in demand during rainy periods. Rain can cause surges in demand for Uber rides, making it a key factor in predicting pickups.
-
-train_filtered_2000m_data:
-No Rain (0):
-The median number of pickups is around 200 when there was no rain in the last hour.
-The range of pickups is larger, with some extreme outliers reaching 500 pickups, suggesting that during dry periods, demand can spike due to various factors like events or commutes.
-
-Rain (1):
-The median number of pickups during rain is slightly higher than during dry periods, indicating that rain has a positive effect on Uber demand.
-The range of pickups during rain is narrower, with fewer extreme outliers compared to dry conditions, suggesting that demand is more stable during rainy periods, though still elevated.
-
-Summary:
-Rain generally increases the number of Uber pickups slightly, with more stable demand compared to dry periods. However, during non-rainy hours, the demand is more variable, with some periods seeing much higher spikes in pickups, likely driven by other factors such as events or busy periods.
-
-
-4. Number of Pickups vs. Is Night
-```{r}
-# Define a function to create the boxplot for "is_night" vs "number_of_pickups"
-plot_night_vs_pickups <- function(data, dataset_name) {
-  ggplot(data, aes(x = factor(is_night), y = number_of_pickups)) +
-    geom_boxplot() +
-    labs(
-      title = paste("Number of Pickups vs. Night -", dataset_name),
-      x = "Is Night (0: No, 1: Yes)",
-      y = "Number of Pickups"
-    )
-}
-
-# Call the function for train_filtered_1000m_data
-plot_night_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
-
-# Call the function for train_filtered_2000m_data
-plot_night_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
-
-```
-train_filtered_1000m_data summary:
-Daytime (0):
-The median number of pickups is higher.
-A wider range of pickups is seen, with more outliers above 100 pickups, indicating periods of higher demand (possibly due to rush hours or events).
-
-Nighttime (1):
-The median number of pickups is lower, and the overall distribution is more compact.
-Fewer extreme outliers are present, indicating more consistent but lower demand during the night.
-Overall, Uber demand is generally higher during the day but remains steady at lower levels through the night.
-
-train_filtered_2000m_data summary:
-Daytime (0):
-The median number of pickups is slightly higher during the day (around 200 pickups).
-There is a wider range of pickups, with some extreme outliers going up to 500 pickups. This suggests periods of higher demand during the day, likely driven by commutes and events.
-
-Nighttime (1):
-The median number of pickups at night is slightly lower compared to the day.
-There is a narrower range of values for pickups at night, but still some outliers. This suggests more consistent but slightly lower demand during night hours.
-
-Summary:
-During the day, the number of Uber pickups tends to be higher, with more variation and spikes in demand. At night, the demand is slightly lower and more stable, with fewer extreme peaks, though there are still some higher-demand periods likely tied to nightlife or events.
-
-
-
-5. Number of Pickups vs. Is Weekend
-Weekends generally see different commuting patterns compared to weekdays, with more leisure-related travel rather than work commutes.
-
-```{r}
-# Define a function to create the boxplot for "is_weekend" vs "number_of_pickups"
-plot_weekend_vs_pickups <- function(data, dataset_name) {
-  ggplot(data, aes(x = factor(is_weekend), y = number_of_pickups)) +
-    geom_boxplot() +
-    labs(
-      title = paste("Number of Pickups vs. Weekend -", dataset_name),
-      x = "Is Weekend (0: Weekday, 1: Weekend)",
-      y = "Number of Pickups"
-    )
-}
-
-# Call the function for train_filtered_1000m_data
-plot_weekend_vs_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
-
-# Call the function for train_filtered_2000m_data
-plot_weekend_vs_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
-
-```
-
-train_filtered_1000m_data: 
-Weekdays (0):
-The median number of pickups is higher on weekdays.
-The range of pickups is wider on weekdays, with more outliers above 100 pickups, indicating higher demand variability during weekdays.
-Some extreme outliers suggest that certain periods on weekdays can see significantly increased demand, possibly due to work commutes or events.
-
-Weekends (1):
-The median number of pickups is lower on weekends compared to weekdays.
-There are fewer extreme outliers on weekends, and the distribution is more compact, suggesting that demand is generally lower and more stable during weekends.
-
-Summary:
-Uber demand is higher and more variable on weekdays, likely driven by work-related commuting and peak hours. On weekends, demand is lower and more consistent, possibly due to reduced work-related travel and more leisure trips, which are less frequent.
-
-
-train_filtered_2000m_data:
-Weekdays (0):
-The median number of pickups is slightly higher on weekdays than on weekends, around 200 pickups.
-The range of pickups is larger on weekdays, with outliers extending up to 500 pickups, suggesting periods of high demand likely driven by work commutes or events.
-
-Weekends (1):
-The median number of pickups is slightly lower than on weekdays but still close to 200 pickups, indicating stable demand over the weekend.
-There are fewer extreme outliers, and the range of pickups is narrower compared to weekdays, reflecting more consistent but slightly lower demand.
-
-Summary:
-Overall, the number of pickups on weekdays and weekends is relatively similar, with a slightly higher median on weekdays. However, weekday demand shows more variability with higher peaks, while weekend demand is more stable with fewer extreme periods of high demand.
-
-
-
-Some time series visualizations:
-```{r}
-# Define a function to plot time series of pickups over time
-plot_time_series_pickups <- function(data, dataset_name) {
-  ggplot(data, aes(x = time_interval, y = number_of_pickups, group = 1)) +
-    geom_line(color = "blue", size = 1) +
-    labs(
-      title = paste("Time Series of Pickups Throughout the Day -", dataset_name),
-      x = "Time (15-minute intervals)",
+      title = paste("Feels Like Temperature vs Uber Demand (Weekly) -", dataset_name),
+      x = "Week",
       y = "Number of Pickups"
     ) +
-    theme_minimal()
+    theme_minimal() +
+    scale_x_date(date_labels = "%b %d", date_breaks = "1 week") +  # Custom x-axis formatting
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for readability
 }
-
-
-# Call the function for train_filtered_1000m_data
-plot_time_series_pickups(train_filtered_1000m_data, "train_filtered_1000m_data")
-
-# Call the function for train_filtered_2000m_data
-plot_time_series_pickups(train_filtered_2000m_data, "train_filtered_2000m_data")
 
 ```
 
-The plot indicates that Uber demand in this area shows regular cycles of high and low activity, with notable peaks in demand occurring periodically. The sharp spikes and wide variability reflect the changing demand for Uber throughout each day, potentially influenced by commuting patterns or events in the city.
 
-
-
+for 1000m:
 ```{r}
-# Plot lag relationship between pickup counts at different time lags
-par(mfrow = c(2, 3))  # Set up the plotting area for 6 plots (2 rows, 3 columns)
-for (i in 1:6) {
-  lag.plot(train_filtered_1000m_data$number_of_pickups, lags = i, main = paste("Lag Plot with Lag", i))
-}
-
+plot_feels_like_vs_pickups_weekly(train_filtered_1000m_data, "1000m Data", "lightblue")
 ```
-Conclusion:
-This analysis suggests that Uber demand in the area has a strong short-term dependency. Predicting future pickups based on past data would likely benefit from using recent time intervals (within the last 30 minutes) rather than older data. As the time lag increases, past data becomes less useful for making predictions.
 
-#### TODO - FIX FROM UP HERE:
+
+
+---------------
 
 #### Preprocessing Steps
 
@@ -3078,9 +2955,10 @@ range(train_filtered_2000m_data$time_interval)
 
 ```
 
-
 ##### Outlier Handling
 Outliers should be detected and handled based solely on the training data. This avoids influencing the validation data and ensures that the validation set remains unbiased.
+
+After analyzing the EDA, we observed that some days have extreme Uber demand due to one-off events. We will treat these as outliers and address them using noise-handling techniques, as is commonly done with time series data. These methods may include applying smoothing techniques, capping extreme values, or employing anomaly detection to reduce the impact of such events on the overall model. This approach will allow us to account for anomalies while preserving the overall trends in the data.
 
 ```{r}
 

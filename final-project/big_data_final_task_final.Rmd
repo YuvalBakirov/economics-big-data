@@ -26,6 +26,7 @@ library(car)
 library(gridExtra) #install.packages("gridExtra")
 library(grid)
 library(scales)
+library(zoo)
 ```
 
 ## Load the CSV files
@@ -2755,93 +2756,71 @@ From the charts, we can observe the following insights regarding how the time of
 
 This suggests that Uber is predominantly used during the day, likely due to regular work-related commutes or daytime activities, while nighttime Uber usage caters to a smaller, more specific set of needs like going out for social events.
 
+
+```{r}
+train_filtered_1000m_data
+```
+
 ------------
 ###### Holiday
-Here we would like to visualize whether it's better to combine the three separate holiday variables into a single is_holiday variable. We will do it by comparing the Uber demand across these holidays as individual variables and as a combined variable.
-
-```{r}
-# Step 1: Create the 'is_holiday' variable
-add_is_holiday <- function(data) {
-  data <- data %>%
-    mutate(is_holiday = ifelse(memorial_day == 1 | independence_day == 1 | labor_day == 1, 1, 0))
-  return(data)
-}
-```
-
-```{r}
-# Function to plot Uber demand for individual holidays with non-holiday percentage included
-plot_individual_holidays <- function(data, dataset_name, color) {
-  
-  # Calculate total pickups on holidays (memorial_day, independence_day, labor_day)
-  total_holiday_pickups <- data %>%
-    filter(memorial_day == 1 | independence_day == 1 | labor_day == 1) %>%
-    summarise(total_pickups = sum(number_of_pickups)) %>%
-    pull(total_pickups)
-  
-  # Summarise holiday and non-holiday pickups
-  holiday_summary <- data %>%
-    summarise(
-      memorial_day = sum(number_of_pickups[memorial_day == 1]),
-      independence_day = sum(number_of_pickups[independence_day == 1]),
-      labor_day = sum(number_of_pickups[labor_day == 1])
-    ) %>%
-    gather(key = "Holiday", value = "Pickups", memorial_day, independence_day, labor_day) %>%
-    mutate(Pickup_Percentage = (Pickups / total_holiday_pickups) * 100)  # Calculate percentage relative to total holiday pickups
-  
-  # Create the bar plot
-  ggplot(holiday_summary, aes(x = Holiday, y = Pickup_Percentage, fill = Holiday)) +
-    geom_bar(stat = "identity", color = "black", fill = color) +
-    labs(
-      title = paste("Uber Demand by Individual Holidays -", dataset_name),
-      x = "Holiday",
-      y = "Percentage of Total Holiday Uber Pickups (%)"
-    ) +
-    theme_minimal() +
-    scale_y_continuous(limits = c(0, 100), labels = scales::percent_format(scale = 1)) +  
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-}
-```
-
-```{r}
-# Function to plot Uber demand for individual holidays with non-holiday percentage included
-plot_individual_holidays <- function(data, dataset_name, color) {
-  
-  # Calculate total holiday pickups and non-holiday pickups
-  holiday_summary <- data %>%
-    summarise(
-      memorial_day = sum(number_of_pickups[memorial_day == 1]),
-      independence_day = sum(number_of_pickups[independence_day == 1]),
-      labor_day = sum(number_of_pickups[labor_day == 1]),
-      non_holiday = sum(number_of_pickups[memorial_day == 0 & independence_day == 0 & labor_day == 0])  # Non-holiday pickups
-    ) %>%
-    gather(key = "Holiday", value = "Pickups", memorial_day, independence_day, labor_day, non_holiday) %>%
-    mutate(Pickup_Percentage = (Pickups / sum(Pickups)) * 100)  # Total pickups (holiday + non-holiday)
-  
-  # Create the bar plot with the updated percentage calculations
-  ggplot(holiday_summary, aes(x = Holiday, y = Pickup_Percentage, fill = Holiday)) +
-    geom_bar(stat = "identity", color = "black", fill = color) +
-    labs(
-      title = paste("Uber Demand by Individual Holidays -", dataset_name),
-      x = "Holiday",
-      y = "Percentage of Total Uber Pickups (%)"
-    ) +
-    theme_minimal() +
-    scale_y_continuous(limits = c(0, 100), labels = scales::percent_format(scale = 1)) +  
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-}
-```
-
-```{r}
-train_filtered_1000m_data <- add_is_holiday(train_filtered_1000m_data)
-
-# Plot Uber demand for individual holidays
-plot_individual_holidays(train_filtered_1000m_data, "1000m Data", "lightblue")
-
-# Plot Uber demand for the combined is_holiday variable
-plot_combined_holiday(train_filtered_1000m_data, "1000m Data", "lightblue")
-```
 
 ------------
+
+###### Crashes
+
+```{r}
+plot_dual_axis <- function(df, pickup_color, crash_color, window = 4) {
+  # Calculate rolling means
+  df$rolling_pickups <- zoo::rollmean(df$number_of_pickups, window, fill = NA)
+  df$rolling_crashes <- zoo::rollmean(df$number_of_crashes, window, fill = NA)
+  
+  # Remove NA values for plotting
+  df_clean <- na.omit(df)
+  
+  # Create scaling factor to match the ranges of pickups and crashes for visual comparison
+  scaleFactor <- max(df_clean$rolling_pickups, na.rm = TRUE) / max(df_clean$rolling_crashes, na.rm = TRUE)
+
+  # Plot with two y-axes
+  ggplot(df_clean, aes(x = time_interval)) +
+    # Left y-axis for pickups
+    geom_line(aes(y = rolling_pickups), size = 1, color = pickup_color) +
+    # Right y-axis for crashes (scaled)
+    geom_line(aes(y = rolling_crashes * scaleFactor), size = 1, color = crash_color) +
+    
+    # Labels and titles
+    labs(title = paste("Rolling Mean of Pickups and Crashes (Window =", window, ")"),
+         x = "Time Interval", y = "Rolling Mean of Pickups") +
+    
+    # Right y-axis scale for crashes
+    scale_y_continuous(sec.axis = sec_axis(~./scaleFactor, name = "Rolling Mean of Crashes")) +
+    
+    # Annotations for color representation
+    annotate("text", x = min(df_clean$time_interval), y = max(df_clean$rolling_pickups, na.rm = TRUE), 
+             label = "Pickups", color = pickup_color, size = 5, hjust = 0) +
+    annotate("text", x = min(df_clean$time_interval), y = max(df_clean$rolling_pickups, na.rm = TRUE) * 0.95, 
+             label = "Crashes", color = crash_color, size = 5, hjust = 0) +
+    
+    theme_minimal()
+}
+```
+
+```{r}
+plot_dual_axis(train_filtered_1000m_data, "#2bcff3", "#4f9ff3", window = 28)
+```
+Why Window = 28?
+* Each day from 17:00 to 00:00 has 7 hours.
+* With 4 intervals per hour (since each interval is 15 minutes), the total number of intervals per day is:
+7 hours × 4 intervals per hour = 28 intervals per day
+
+Thus, a window of 28 means we are calculating a rolling mean over an entire day (from 17:00 to 00:00). This window size smooths out fluctuations within each day, helping to reveal daily trends in the data.
+
+```{r}
+plot_dual_axis(train_filtered_1000m_data, "#2bcff3", "#4f9ff3", window = 196)
+```
+Calculation for a 7-Day Window:
+28 intervals per day × 7 days per week = 196 intervals
+a window of 196 would calculate the rolling mean across an entire week.
+
 
 
 ------------

@@ -25,6 +25,7 @@ library(corrplot)
 library(car)
 library(gridExtra) #install.packages("gridExtra")
 library(grid)
+library(scales)
 ```
 
 ## Load the CSV files
@@ -733,50 +734,6 @@ plot_base_timeline(train_filtered_1000m_data, "Uber Pickups per Day by Base (100
 ```{r}
 # Apply the function to your dataset
 plot_base_timeline(train_filtered_2000m_data, "Uber Pickups per Day by Base (2000m Data)")
-```
-
-TODO - TODEL:
-```{r}
-# # Function to plot days with zero pickups for each base
-# plot_zero_pickups <- function(data, title) {
-#   # Extract the date from the timestamp and group by base and date
-#   base_daily_counts <- data %>%
-#     mutate(date = as.Date(timestamp)) %>%
-#     group_by(base, date) %>%
-#     summarise(count_pickups_per_day = n(), .groups = 'drop') 
-#   
-#   # Create a complete sequence of dates for each base to account for missing days
-#   full_date_range <- base_daily_counts %>%
-#     group_by(base) %>%
-#     tidyr::complete(date = seq(min(date), max(date), by = "day"),
-#                     fill = list(count_pickups_per_day = 0)) %>%
-#     ungroup()
-#   
-#   # Filter for rows where the number of pickups is zero
-#   zero_pickups <- full_date_range %>%
-#     filter(count_pickups_per_day == 0)
-#   
-#   # Plot the data
-#   ggplot(zero_pickups, aes(x = date, y = count_pickups_per_day, color = base, group = base)) +
-#     geom_point(size = 2) +  # Use points to mark zero pickups
-#     labs(title = title,
-#          x = "Date",
-#          y = "Zero Pickups",
-#          color = "Base") +
-#     theme_minimal() +
-#     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-#     scale_y_continuous(limits = c(0, 0.1), expand = c(0, 0))  # Fix y-axis to a small range to emphasize 0 pickups
-# }
-```
-
-```{r}
-# # Apply the function to your dataset
-# plot_zero_pickups(train_filtered_1000m_data, "Days with Zero Uber Pickups per Base (1000m Data)")
-```
-
-```{r}
-# # Apply the function to your dataset
-# plot_zero_pickups(train_filtered_2000m_data, "Days with Zero Uber Pickups per Base (2000m Data)")
 ```
 
 ```{r}
@@ -2012,13 +1969,13 @@ Therefore, We will omit this variable later in 1000m data.
 Since all the values in the 1000m data for the feature: 'number_of_persons_killed' are 0, we would like to check its behavior in the 2000m data:
 ```{r}
 # Define a function to count and visualize the occurrences for 'number_of_persons_killed'
-plot_persons_killed_distribution <- function(data, dataset_name) {
+plot_persons_killed_distribution <- function(data, dataset_name, color) {
   # Create a table of counts for 'number_of_persons_killed'
   counts <- as.data.frame(table(data$number_of_persons_killed))
   
   # Create a bar plot to visualize the distribution
   ggplot(counts, aes(x = Var1, y = Freq)) +
-    geom_bar(stat = "identity", fill = "blue", color = "black") +
+    geom_bar(stat = "identity", fill = color, color = "black") +
     labs(
       title = paste("Distribution of 'number_of_persons_killed' -", dataset_name),
       x = "Number of Persons Killed",
@@ -2030,11 +1987,11 @@ plot_persons_killed_distribution <- function(data, dataset_name) {
 
 ```{r}
 # Call the function for train_filtered_1000m_data
-plot_persons_killed_distribution(train_filtered_1000m_data, "train_filtered_1000m_data")
+plot_persons_killed_distribution(train_filtered_1000m_data, "train_filtered_1000m_data", "lightblue")
 ```
 ```{r}
 # Call the function for train_filtered_2000m_data
-plot_persons_killed_distribution(train_filtered_2000m_data, "train_filtered_2000m_data")
+plot_persons_killed_distribution(train_filtered_2000m_data, "train_filtered_2000m_data", "lightgreen")
 ```
 
 We can see that the "number_of_persons_killed" is very negligible in both tables. In the 1000 meter radius table, there are no persons killed at all from April to mid-September, therefore it is very likely that there will be no persons killed until the end of September.
@@ -2315,7 +2272,9 @@ Observations from the 2000m Data:
 * There is a wider range of pickups in this dataset, with instances reaching up to 400 pickups, implying a more diverse set of demand situations at this larger distance from the Empire State Building.
 
 ------------
+
 *TODO - what is autocorrelation in time series??*
+
 ------------
 
 Here's a function that plots the number of Uber pickups over time: 
@@ -2398,24 +2357,24 @@ Observations: TODO
 
 
 ```{r}
-# Function to plot the number of pickups per month
-plot_monthly_behavior <- function(data, dataset_name, color) {
+# Function to plot the behavior of a specific feature (e.g., pickups) per month
+plot_monthly_behavior <- function(data, feature, dataset_name, color) {
   # Convert time_interval to date format and extract month
   data$month <- format(as.Date(data$time_interval), "%Y-%m")
   
-  # Summarize the total pickups per month
+  # Summarize the total of the selected feature per month
   monthly_data <- data %>%
     group_by(month) %>%
-    summarise(total_pickups = sum(number_of_pickups))
+    summarise(total_value = sum(!!sym(feature), na.rm = TRUE))  # Use !!sym(feature) to pass the feature name dynamically
   
-  # Create a line plot to show the behavior of pickups per month
-  ggplot(monthly_data, aes(x = month, y = total_pickups, group = 1)) +
+  # Create a line plot to show the behavior of the selected feature per month
+  ggplot(monthly_data, aes(x = month, y = total_value, group = 1)) +
     geom_line(color = color, size = 1) +
     geom_point(color = color, size = 2) +
     labs(
-      title = paste("Monthly Behavior of Uber Pickups -", dataset_name),
+      title = paste("Monthly Behavior of", feature, "-", dataset_name),
       x = "Month",
-      y = "Total Pickups"
+      y = paste("Total", feature)
     ) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -2424,11 +2383,11 @@ plot_monthly_behavior <- function(data, dataset_name, color) {
 
 ```{r}
 # Call the function for 1000m data
-plot_monthly_behavior(train_filtered_1000m_data, "1000m Data", "lightblue")
+plot_monthly_behavior(train_filtered_1000m_data, "number_of_pickups", "1000m Data", "lightblue")
 ```
 ```{r}
 # Call the function for 2000m data
-plot_monthly_behavior(train_filtered_2000m_data, "2000m Data", "lightgreen")
+plot_monthly_behavior(train_filtered_2000m_data, "number_of_pickups", "2000m Data", "lightgreen")
 ```
 Note: There is a sharp drop in September because only 9 days are present for that month in the dataset, whereas the other months represent full months.
 
@@ -2457,31 +2416,178 @@ count_days_per_month(train_filtered_2000m_data, "2000m Data")
 SO: Overall, the demand for Uber appears to be on the rise, except for a small decrease observed in June. We will later investigate what might have caused this dip in demand during that month to understand if any specific factors contributed to it.
 
 Lets try and see why:
-TODO
+Let's take a look at the taxis' pickup behavior as well:
+```{r}
+plot_monthly_behavior(train_filtered_1000m_data, "taxis_pickup_count", "1000m Data", "lightblue")
+```
+
+```{r}
+plot_monthly_behavior(train_filtered_2000m_data, "taxis_pickup_count", "2000m Data", "lightgreen")
+```
+Like Uber, the demand for yellow taxis also decreased slightly in June (although the drop was not as significant as for Uber, there was still a small decline). We speculate that this happened because June is considered to have the most pleasant weather in New York-it's not too hot for walking and not too cold or rainy to necessitate taking an Uber or taxi. Later, we will see that June falls in the middle in terms of humidity, feels-like temperature, and the number of rainy days compared to other months (though our view of September is limited, as we only have data for the first nine days of the month).
+
+Additionally, June is often a transitional period between the spring tourist season and the summer peak, which might result in a slight dip in overall transportation demand as tourism slows down before ramping up again in July and August. This could explain why both Uber and yellow taxi demand softened during this month.
+
+However, the drop in yellow taxi demand was smaller than Uber's because taxis were still more popular than Uber in 2014, especially in New York City. At the time, yellow taxis dominated the on-demand transportation market, with their well-established presence and infrastructure, while Uber was still gaining ground.
 
 ------------
 
-Special events count in every month:
+Plot for the number of rainy days per month:
 ```{r}
-# Define the function to create the box plot for event sum by month
-plot_event_sum_by_month <- function(data, color) {
+# Function to plot the number of rainy days per month
+plot_rainy_days_by_month <- function(data, color, data_name) {
+  
+  # Add a 'date' column to the data for grouping by day
+  data <- data %>%
+    mutate(date = as.Date(time_interval))  # Extract the date from the time_interval
+  
+  # Group by date and determine if it rained on that day (at least one interval had rain)
+  rainy_days <- data %>%
+    group_by(date) %>%
+    summarise(rained = max(is_raining_last_hour)) %>%  # Check if it rained in any time interval
+    filter(rained == 1)  # Filter to keep only rainy days
+  
+  # Add a 'month' column for grouping by month
+  rainy_days <- rainy_days %>%
+    mutate(month = format(date, "%Y-%m"))
+  
+  # Count the number of rainy days per month
+  rainy_days_per_month <- rainy_days %>%
+    group_by(month) %>%
+    summarise(number_of_rainy_days = n())
+  
+  # Create the plot
+  ggplot(rainy_days_per_month, aes(x = month, y = number_of_rainy_days)) +
+    geom_bar(stat = "identity", fill = color, color = "black") +
+    labs(
+      title = paste("Number of Rainy Days per Month -", data_name),
+      x = "Month",
+      y = "Number of Rainy Days"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+plot_rainy_days_by_month(train_filtered_1000m_data, "lightblue", "1000m Data")
+```
+```{r}
+plot_rainy_days_by_month(train_filtered_2000m_data, "lightgreen", "2000m Data")
+```
+
+------------
+
+Here's a function that plots the mean feature of feels_like & humidity for each month. This temperature accounts for the human perception of weather:
+```{r}
+# Function to plot the mean weather feature for each month
+plot_mean_feature_by_month <- function(data, feature, color, data_name) {
+  
+  # Add a 'month' column to the data for grouping by month
+  data <- data %>%
+    mutate(month = floor_date(time_interval, "month"))
+  
+  # Calculate the mean of the specific feature per month
+  feature_means <- data %>%
+    group_by(month) %>%
+    summarise(
+      mean_feature = mean(.data[[feature]], na.rm = TRUE)  # Use the feature argument
+    )
+  
+  # Create a plot to visualize the mean feature per month
+  ggplot(feature_means, aes(x = as.factor(month), y = mean_feature)) +
+    geom_bar(stat = "identity", fill = color, color = "black") +
+    labs(
+      title = paste("Mean", feature, "Per Month -", data_name),
+      x = "Month",
+      y = paste("Mean", feature)
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+
+```
+
+```{r}
+plot_mean_feature_by_month(train_filtered_1000m_data, "feels_like", "lightblue", "1000m Data")
+```
+
+```{r}
+plot_mean_feature_by_month(train_filtered_2000m_data, "feels_like", "lightgreen", "2000m Data")
+```
+
+```{r}
+plot_mean_feature_by_month(train_filtered_1000m_data, "humidity", "lightblue", "1000m Data")
+```
+
+```{r}
+plot_mean_feature_by_month(train_filtered_2000m_data, "humidity", "lightgreen", "2000m Data")
+```
+
+------------
+
+Holidays count in every month:
+```{r}
+# Function to count holidays per month and display as a box plot
+count_holidays_by_month <- function(data, color, data_name) {
+  
+  # Add a 'month' column to the data for grouping by month
+  data <- data %>%
+    mutate(month = floor_date(time_interval, "month"))
+  
+  # Count the number of holidays (Memorial Day, Independence Day, Labor Day) per month
+  holiday_counts <- data %>%
+    group_by(month) %>%
+    summarise(
+      total_holidays = sum(memorial_day + independence_day + labor_day)
+    )
+  
+  # Create a box plot to visualize holiday counts per month
+  ggplot(holiday_counts, aes(x = as.factor(month), y = total_holidays)) +
+    geom_boxplot(fill = color, color = color) +
+    labs(
+      title = paste("Holiday Counts Per Month -", data_name),
+      x = "Month",
+      y = "Number of Holidays"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+count_holidays_by_month(train_filtered_1000m_data, "lightblue", "1000m Data")
+```
+
+```{r}
+count_holidays_by_month(train_filtered_2000m_data, "lightgreen", "2000m Data")
+```
+
+------------
+
+Sum of: event_count, number_of_crashes, total_arrests in every month:
+```{r}
+# Define the function to create the box plot for any feature's sum by month
+plot_feature_sum_by_month <- function(data, feature, color, data_name) {
   
   # Extract the month from the time_interval
   data <- data %>%
     mutate(month = format(as.Date(time_interval), "%Y-%m"))
   
-  # Group by month and calculate the sum of events for each month
-  monthly_event_sum <- data %>%
+  # Group by month and calculate the sum of the given feature for each month
+  monthly_feature_sum <- data %>%
     group_by(month) %>%
-    summarise(event_sum = sum(event_count))
+    summarise(feature_sum = sum(.data[[feature]], na.rm = TRUE))
   
   # Create the box plot
-  ggplot(monthly_event_sum, aes(x = month, y = event_sum)) +
-    geom_boxplot(fill = color, color = "black") +
+  ggplot(monthly_feature_sum, aes(x = month, y = feature_sum)) +
+    geom_boxplot(fill = color, color = color) +
+    scale_y_continuous(labels = comma) +  # Format the y-axis to avoid scientific notation
     labs(
-      title = "Event Sum by Month",
+      title = paste("Sum of", feature, "by Month for", data_name),
       x = "Month",
-      y = "Event Sum"
+      y = paste("Sum of", feature)
     ) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate the x-axis labels for better readability
@@ -2489,23 +2595,254 @@ plot_event_sum_by_month <- function(data, color) {
 ```
 
 ```{r}
-plot_event_sum_by_month(train_filtered_1000m_data, "lightblue")
+plot_feature_sum_by_month(train_filtered_1000m_data, "event_count", "lightblue", "1000m Data")
 ```
 
 ```{r}
-plot_event_sum_by_month(train_filtered_2000m_data, "lightgreen")
+plot_feature_sum_by_month(train_filtered_2000m_data, "event_count", "lightgreen", "2000m Data")
+```
+
+```{r}
+plot_feature_sum_by_month(train_filtered_1000m_data, "number_of_crashes", "lightblue", "1000m Data")
+```
+
+```{r}
+plot_feature_sum_by_month(train_filtered_2000m_data, "number_of_crashes", "lightgreen", "2000m Data")
+```
+
+```{r}
+plot_feature_sum_by_month(train_filtered_1000m_data, "total_arrests", "lightblue", "1000m Data")
+```
+
+```{r}
+plot_feature_sum_by_month(train_filtered_2000m_data, "total_arrests", "lightgreen", "2000m Data")
+```
+
+------------
+###### How Does Rain Affect Uber Demand?
+
+Let calculate the number of intervals where it is raining and where it is not:
+```{r}
+# Function to calculate the amount of intervals with a specific feature condition
+calculate_intervals <- function(data, feature) {
+  
+  # Count the number of intervals where the feature is true and where it is false
+  intervals_summary <- data %>%
+    summarise(
+      intervals_with_condition = sum(!!sym(feature) == 1, na.rm = TRUE),
+      intervals_without_condition = sum(!!sym(feature) == 0, na.rm = TRUE)
+    )
+  
+  # Return the result
+  return(intervals_summary)
+}
+```
+
+```{r}
+calculate_intervals(train_filtered_1000m_data, "is_raining_last_hour")
+```
+
+```{r}
+calculate_intervals(train_filtered_2000m_data, "is_raining_last_hour")
+```
+
+We can see that our data is not balanced. There are significantly more time intervals without rain than with rain, which makes sense since most of the months we are looking at are during the spring and summer seasons.
+
+Since our data is imbalanced, with many more time intervals without rain than with rain, directly comparing the raw counts of Uber pickups would not provide a fair analysis of how rain affects demand. By using percentages, we can normalize the data and accurately assess the proportionate effect of rain on Uber demand. This approach ensures that we account for the disparity in the number of rainy and non-rainy intervals and provides a clearer comparison. 
+```{r}
+# Function to compare Uber demand during intervals with or without a specific feature using percentages
+plot_uber_demand_by_feature <- function(data, feature, dataset_name, color) {
+  
+  # Group data by the given feature condition and calculate the total pickups and number of intervals
+  feature_summary <- data %>%
+    group_by(!!sym(feature)) %>%
+    summarise(
+      total_pickups = sum(number_of_pickups, na.rm = TRUE),
+      num_intervals = n()
+    )
+  
+  # Calculate the percentage of total pickups for intervals with and without the feature
+  feature_summary <- feature_summary %>%
+    mutate(pickup_percentage = (total_pickups / sum(total_pickups)) * 100)
+  
+  # Label for feature condition
+  feature_summary[[feature]] <- factor(feature_summary[[feature]], 
+                                       levels = c(0, 1), 
+                                       labels = c(paste("No", feature), feature))
+  
+  # Create a bar plot to show percentage of Uber pickups during intervals with and without the feature
+  ggplot(feature_summary, aes(x = !!sym(feature), y = pickup_percentage, fill = !!sym(feature))) +
+    geom_bar(stat = "identity", color = "black", fill = color) +
+    labs(
+      title = paste("Uber Demand by", feature, "-", dataset_name),
+      x = paste(feature, "Condition"),
+      y = "Percentage of Total Uber Pickups (%)"
+    ) +
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 100), labels = scales::percent_format(scale = 1)) +  # Ensures y-axis always ranges from 0 to 100%
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+plot_uber_demand_by_feature(train_filtered_1000m_data, "is_raining_last_hour", "1000m Data", "lightblue")
+```
+```{r}
+plot_uber_demand_by_feature(train_filtered_1000m_data, "is_raining_last_hour", "2000m Data", "lightgreen")
+```
+
+From the charts, we can observe that Uber demand is higher during non-rainy intervals compared to rainy intervals.
+
+In both the 1000m and 2000m data:
+* The percentage of Uber pickups during non-rainy periods overwhelmingly dominates, making up more than 75% of the total demand.
+* Meanwhile, the percentage of Uber pickups during rainy periods is much lower, accounting for less than 25% of total pickups.
+
+This may suggest that rain, while having an effect on demand, does not substantially increase the number of Uber pickups. This could be because most of the months we're analyzing fall within the spring and summer seasons, where rainy intervals are less frequent. Additionally, in pleasant weather, people may prefer alternative modes of transportation, such as walking, rather than using Uber. However, when it does rain, there is still some observable increase in demand, but it is not as pronounced as one might expect.
+
+------------
+
+###### How Does Weekends Affect Uber Demand?
+
+```{r}
+calculate_intervals(train_filtered_1000m_data, "is_weekend")
+```
+
+```{r}
+calculate_intervals(train_filtered_2000m_data, "is_weekend")
+```
+
+We can see that our data is not balanced. There are more time intervals that are not weekends, which makes sense since most of the days in the week do not represent a weekend.
+
+Also here we will look at the %:
+```{r}
+plot_uber_demand_by_feature(train_filtered_1000m_data, "is_weekend", "1000m Data", "lightblue")
+```
+
+```{r}
+plot_uber_demand_by_feature(train_filtered_1000m_data, "is_weekend", "2000m Data", "lightgreen")
+```
+
+The charts show that the demand for Uber is significantly higher on weekdays compared to weekends. This makes sense because during the week, people are commuting to work, attending meetings, running errands, and generally have more reasons to move around the city. As a result, Uber becomes a convenient mode of transportation to navigate New York's busy streets.
+
+On the other hand, weekends generally have a lower demand for Uber as people might be more likely to relax, stay at home, or use alternative transportation options, especially for leisure activities.
+
+------------
+
+###### How Does the time of the day Affect Uber Demand?
+```{r}
+calculate_intervals(train_filtered_1000m_data, "is_night")
+```
+
+```{r}
+calculate_intervals(train_filtered_2000m_data, "is_night")
+```
+
+In terms of time of day, the data is quite balanced: that is, there is almost the same amount of night and evening intervals. But to be more precise, we would still prefer to look at the %:
+```{r}
+plot_uber_demand_by_feature(train_filtered_1000m_data, "is_night", "1000m Data", "lightblue")
+```
+
+```{r}
+plot_uber_demand_by_feature(train_filtered_1000m_data, "is_night", "2000m Data", "lightgreen")
+```
+
+
+From the charts, we can observe the following insights regarding how the time of day affects Uber demand:
+
+* Demand is significantly higher during the day (non-night intervals): In both the 1000m and 2000m datasets, more than 50% of Uber pickups occur during the day. This makes sense because people are typically commuting, running errands, or engaging in daytime activities during these hours. Daytime tends to be busier, especially in a city like New York, where daytime demand for transportation is generally high.
+
+* Lower demand at night: Nighttime Uber demand is noticeably lower, accounting for less than 50% of total pickups. While there is still demand during night hours (due to activities like dining out, nightlife, or late commutes), the overall volume is lower compared to the daytime.
+
+This suggests that Uber is predominantly used during the day, likely due to regular work-related commutes or daytime activities, while nighttime Uber usage caters to a smaller, more specific set of needs like going out for social events.
+
+------------
+###### Holiday
+Here we would like to visualize whether it's better to combine the three separate holiday variables into a single is_holiday variable. We will do it by comparing the Uber demand across these holidays as individual variables and as a combined variable.
+
+```{r}
+# Step 1: Create the 'is_holiday' variable
+add_is_holiday <- function(data) {
+  data <- data %>%
+    mutate(is_holiday = ifelse(memorial_day == 1 | independence_day == 1 | labor_day == 1, 1, 0))
+  return(data)
+}
+```
+
+```{r}
+# Function to plot Uber demand for individual holidays with non-holiday percentage included
+plot_individual_holidays <- function(data, dataset_name, color) {
+  
+  # Calculate total pickups on holidays (memorial_day, independence_day, labor_day)
+  total_holiday_pickups <- data %>%
+    filter(memorial_day == 1 | independence_day == 1 | labor_day == 1) %>%
+    summarise(total_pickups = sum(number_of_pickups)) %>%
+    pull(total_pickups)
+  
+  # Summarise holiday and non-holiday pickups
+  holiday_summary <- data %>%
+    summarise(
+      memorial_day = sum(number_of_pickups[memorial_day == 1]),
+      independence_day = sum(number_of_pickups[independence_day == 1]),
+      labor_day = sum(number_of_pickups[labor_day == 1])
+    ) %>%
+    gather(key = "Holiday", value = "Pickups", memorial_day, independence_day, labor_day) %>%
+    mutate(Pickup_Percentage = (Pickups / total_holiday_pickups) * 100)  # Calculate percentage relative to total holiday pickups
+  
+  # Create the bar plot
+  ggplot(holiday_summary, aes(x = Holiday, y = Pickup_Percentage, fill = Holiday)) +
+    geom_bar(stat = "identity", color = "black", fill = color) +
+    labs(
+      title = paste("Uber Demand by Individual Holidays -", dataset_name),
+      x = "Holiday",
+      y = "Percentage of Total Holiday Uber Pickups (%)"
+    ) +
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 100), labels = scales::percent_format(scale = 1)) +  
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+# Function to plot Uber demand for individual holidays with non-holiday percentage included
+plot_individual_holidays <- function(data, dataset_name, color) {
+  
+  # Calculate total holiday pickups and non-holiday pickups
+  holiday_summary <- data %>%
+    summarise(
+      memorial_day = sum(number_of_pickups[memorial_day == 1]),
+      independence_day = sum(number_of_pickups[independence_day == 1]),
+      labor_day = sum(number_of_pickups[labor_day == 1]),
+      non_holiday = sum(number_of_pickups[memorial_day == 0 & independence_day == 0 & labor_day == 0])  # Non-holiday pickups
+    ) %>%
+    gather(key = "Holiday", value = "Pickups", memorial_day, independence_day, labor_day, non_holiday) %>%
+    mutate(Pickup_Percentage = (Pickups / sum(Pickups)) * 100)  # Total pickups (holiday + non-holiday)
+  
+  # Create the bar plot with the updated percentage calculations
+  ggplot(holiday_summary, aes(x = Holiday, y = Pickup_Percentage, fill = Holiday)) +
+    geom_bar(stat = "identity", color = "black", fill = color) +
+    labs(
+      title = paste("Uber Demand by Individual Holidays -", dataset_name),
+      x = "Holiday",
+      y = "Percentage of Total Uber Pickups (%)"
+    ) +
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 100), labels = scales::percent_format(scale = 1)) +  
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+train_filtered_1000m_data <- add_is_holiday(train_filtered_1000m_data)
+
+# Plot Uber demand for individual holidays
+plot_individual_holidays(train_filtered_1000m_data, "1000m Data", "lightblue")
+
+# Plot Uber demand for the combined is_holiday variable
+plot_combined_holiday(train_filtered_1000m_data, "1000m Data", "lightblue")
 ```
 
 ------------
 
-```{r}
-
-```
-
-------------
-```{r}
-
-```
 
 ------------
 

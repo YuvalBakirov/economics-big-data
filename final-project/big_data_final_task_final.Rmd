@@ -23,7 +23,7 @@ library(readr)
 library(stringr)
 library(corrplot)
 library(car)
-library(gridExtra) #install.packages("gridExtra")
+library(gridExtra)
 library(grid)
 library(scales)
 library(zoo)
@@ -109,59 +109,6 @@ Looking at the map:
 #   addCircles(lng = lon, lat = lat, radius = big_radius, color = "red", fillOpacity = 0.1)  #
 ```
 
-#### Is 2000m is in train_raw?
-```{r filtered_data_look}
-
-# str(train_filtered_2000m_data)
-# str(train_raw_data)
-# 
-# # Ensure both data frames have the same columns before comparison
-# common_columns <- intersect(names(train_filtered_2000m_data), names(train_raw_data))
-# 
-# # Select only the common columns for comparison
-# train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
-# train_raw_data_common <- train_raw_data %>% select(all_of(common_columns))
-# 
-# # Now use setdiff to find rows in train_filtered_2000m_data not in train_raw_data
-# missing_rows <- setdiff(train_filtered_2000m_data_common, train_raw_data_common)
-# 
-# # Check if any rows are missing
-# if (nrow(missing_rows) == 0) {
-#   print("All rows in train_filtered_2000m_data are present in train_raw_data.")
-# } else {
-#   print("Some rows in train_filtered_2000m_data are missing from train_raw_data.")
-#   print(missing_rows)
-# }
-
-```
-So, 2,623  rows in 2000m are unique - (not in train_raw_data)
-
-#### Is 2000 above from train_data in 2000m?
-```{r filtered_data_look}
-
-# # Create a new dataframe with rows where dist is greater than or equal to 2000
-# check_train_raw_above_2000 <- train_raw_data %>%
-#   filter(dist >= 2000)
-# 
-# # Ensure both data frames have the same columns before comparison
-# common_columns <- intersect(names(check_train_raw_above_2000), names(train_filtered_2000m_data))
-# 
-# # Select only common columns for comparison
-# check_train_raw_above_2000_common <- check_train_raw_above_2000 %>% select(all_of(common_columns))
-# train_filtered_2000m_data_common <- train_filtered_2000m_data %>% select(all_of(common_columns))
-# 
-# # Now use setdiff
-# missing_rows <- setdiff(check_train_raw_above_2000_common, train_filtered_2000m_data_common)
-# 
-# # Check if any rows are missing
-# if (nrow(missing_rows) == 0) {
-#   print("All rows in check_train_raw_above_2000 are present in train_filtered_2000m_data.")
-# } else {
-#   print("Some rows in check_train_raw_above_2000 are missing from train_filtered_2000m_data.")
-#   print(missing_rows)
-# }
-```
-
 ## Part A: Data Rearrangement
 
 ### Filtering Data
@@ -221,6 +168,15 @@ train_filtered_1000m_data
 
 ```{r}
 train_2000m_data
+```
+
+Looking at the max distance of the 2000m data:
+```{r}
+# Check the maximum distance in the filtered dataset
+max_distance_2000 <- max(train_2000m_data$dist)
+
+# Print the maximum distance
+print(paste("Maximum distance in the 2000m dataset is:", max_distance_2000))
 ```
 
 ### Filtering by Time
@@ -1240,20 +1196,21 @@ weather_data_selected <- weather_data %>%
 ```{r}
 weather_data_selected
 ```
--TODO- 
+
 The features we added:
-Snow (is_snowing_last_hour): It is highly unlikely to have snow in New York in September. Therefore, the feature related to snow is most likely irrelevant to our prediction task and can be excluded.
-From google: While it's possible to snow as early as November and as late as April, snowfall in these months is extremely unlikely. Snowfall is certainly not of concern from May through October, outside of the extremely rare occurrence.
+Snow (is_snowing_last_hour): Snow volume for the last hour, mm (in liquid state).
 
-Rain (is_raining_last_hour): Although rain can influence Uber demand, we might want to analyze the historical rainfall pattern in September. Rain may be worth considering, as rain can directly affect ride demand, especially during evening hours.
+Rain (is_raining_last_hour): Rain volume for the last hour, mm.
 
-Temperature-related features (temp, feels_like): These are usually relevant, as weather conditions influence how people choose transportation. Extreme heat or cold can increase ride demand, especially in a city like New York where people walk frequently.
+temp: Temperature.
 
-Wind speed: This might be a secondary factor, but high winds could discourage people from walking, increasing the need for Uber. It's typically not a major predictor, but we can keep it initially and see if the data shows any correlation.
+feels_like:This temperature parameter accounts for the human perception of weather.
 
-Cloud cover (clouds_all): Cloud cover is usually not a direct predictor of Uber rides unless it is related to rain. If cloud cover in September was consistent or didn't vary significantly, this feature could be less useful.
+Wind speed: Wind speed. Units – default: meter/sec.
 
-Humidity: Humidity could play a role, but its relevance is usually secondary compared to other weather factors like rain or temperature.
+clouds_all: Cloudiness, %.
+
+humidity: Humidity, %.
 
 ```{r}
 train_filtered_1000m_data
@@ -2363,17 +2320,6 @@ The monthly trend (red) shows a similar rising pattern from April to July as see
 - Larger Area, Higher Demand: The increased fluctuations in the 2000-meter radius suggest that covering a broader area increases Uber demand. This makes sense, as this radius covers more tourist spots, business districts, and residential areas.
 - Smoother Long-Term Trends: Despite short-term volatility, the long-term trends show steady growth in demand, particularly during peak tourist and summer months.
 
--------------
-
-הסבר בעברית:
-בגרף הראשון (1000m):
-
-הגרף מציג את הביקוש לנסיעות אובר בתוך רדיוס של 1000 מטר ממגדל האמפייר סטייט. הקו הכחול מייצג את הנתונים המקוריים, והקו הירוק, הכתום והאדום מייצגים את הממוצעים הנעים היומיים, השבועיים והחודשיים בהתאמה. רואים תנודות משמעותיות בביקוש לאורך כל התקופה, כאשר השיאים קורים בזמנים מסוימים של היום או עקב אירועים מקומיים. המגמה החודשית (אדום) מראה עלייה מתונה בביקוש עד יולי, ואחריה ירידה קלה באוגוסט וספטמבר (למרות שחסרים נתונים לחלק מספטמבר).
-
-בגרף השני (2000m ומעלה):
-
-הגרף מציג את הביקוש לנסיעות אובר מעבר לרדיוס של 2000 מטר ממגדל האמפייר סטייט. כמו בגרף הראשון, גם כאן יש תנודות משמעותיות בנתונים המקוריים (כחול), עם מגמות יומיות, שבועיות וחודשיות (ירוק, כתום, אדום). הביקוש כאן גבוה יותר ומכיל הרבה יותר תנודות לעומת הגרף הראשון, מה שמעיד על שטח רחב יותר שכולל יותר אזורים תיירותיים ואזורי עסקים. כמו בגרף הקודם, יש עלייה מתונה בביקוש עד יולי, ולאחר מכן ירידה מסוימת.
-
 ##### Month, Day, Week
 
 The functions:
@@ -3030,7 +2976,7 @@ plot_avg_pickups_by_interval <- function(data, dataset_name) {
 ```
 
 
-We would like to understand if weekends have an effect on demand for Uber
+We would like to understand if weekends have an effect on demand for Uber:
 
 for 1000m:
 ```{r}
@@ -3205,7 +3151,7 @@ Both graphs reveal the distinction between evening and night demand, with the 20
 
 ----------------------------
 
-We saw before that for both of that data-sets the week starting at June 30, 2014 between a drop in demand for Uber, we'll take a closer look at it:
+We saw before that for both of that data-sets the week starting at June 30, 2014 had a drop in demand for Uber, we'll take a closer look at it:
 ```{r}
 # Function to create a plot for each day of the week, with dates next to the day names
 plot_weekly_uber_pickups <- function(df, data_name, first_day_of_week) {
@@ -3381,6 +3327,7 @@ plot_uber_demand_for_time_interval <- function(data, dataset_name, time_interval
 
 ```
 
+
 for 1000m:
 ```{r}
 plot_uber_demand_for_time_interval(train_filtered_1000m_data, "1000m Data", "17:45", "lightblue")
@@ -3397,6 +3344,7 @@ plot_uber_demand_for_time_interval(train_filtered_1000m_data, "1000m Data", "22:
 ```{r}
 plot_uber_demand_for_time_interval(train_filtered_1000m_data, "1000m Data", "19:30", "lightblue")
 ```
+
 
 for 2000m:
 ```{r}
@@ -3615,7 +3563,7 @@ plot_histogram(train_filtered_1000m_data, "1000m Data", "number_of_persons_injur
 for 2000:
 
 ```{r}
-plot_histogram(train_filtered_1000m_data, "1000m Data", "number_of_persons_injured", "lightgreen")
+plot_histogram(train_filtered_2000m_data, "2000m Data", "number_of_persons_injured", "lightgreen")
 ```
 Upon analyzing the distribution of the number_of_persons_injured variable, we observed that the majority of cases had a value of 0, meaning no persons were injured. The remaining values, where injuries were recorded, represent only a small fraction of the data.
 
@@ -3646,7 +3594,7 @@ create_is_persons_injured_feature <- function(df) {
 
 ```{r}
 # Function to plot average Uber demand for each crash level
-plot_avg_pickups_per_crash <- function(df, data_name) {
+plot_avg_pickups_per_crash <- function(df, data_name, color) {
   
   # Summarize average pickups for each crash level
   crash_summary <- df %>%
@@ -3655,7 +3603,7 @@ plot_avg_pickups_per_crash <- function(df, data_name) {
   
   # Plot
   ggplot(crash_summary, aes(x = factor(number_of_crashes), y = avg_pickups)) +
-    geom_bar(stat = "identity", fill = "lightblue", color = "black") +
+    geom_bar(stat = "identity", fill = color, color = "black") +
     labs(
       title = paste("Average Uber Demand per Crash Count -", data_name),
       x = "Number of Crashes",
@@ -3667,8 +3615,19 @@ plot_avg_pickups_per_crash <- function(df, data_name) {
 ```
 
 ```{r}
-plot_avg_pickups_per_crash(train_filtered_2000m_data, "2000m Data")
+plot_avg_pickups_per_crash(train_filtered_1000m_data, "1000m Data", "lightblue")
 ```
+
+
+```{r}
+plot_avg_pickups_per_crash(train_filtered_2000m_data, "2000m Data", "lightgreen")
+```
+
+From these charts, we observe that in the 1000m radius, Uber demand increases with the number of crashes, suggesting people might prefer Uber in areas affected by traffic incidents. In the 2000m radius, demand remains consistently high across a broader range of crash counts, indicating a steady preference for Uber even in areas with frequent incidents, likely due to varied transportation needs within the larger area.
+
+It makes sense that as the number of Uber trips increases, the likelihood of accidents also rises, since more vehicles on the road increase congestion and collision risks. 
+
+Additionally, the 2000m data shows more accidents overall due to its larger coverage area, capturing more incidents within its expanded radius.
 
 
 ##### Events
@@ -3695,7 +3654,7 @@ event_clustering_visualization <- function(data, dataset_name, color_low, color_
   # Create a scatter plot to visualize clusters with a trend line
   ggplot(data, aes(x = total_events, y = total_pickups, color = event_cluster)) +
     geom_point(size = 3) +
-    geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed") +  # Add a linear trend line
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, color = "black", linetype = "dashed") +  # Add a linear trend line
     scale_color_manual(values = c("Low" = color_low, "Moderate" = color_mid, "High" = color_high)) +
     labs(
       title = paste("Event Clustering vs Uber Demand -", dataset_name),
@@ -3827,8 +3786,6 @@ remove_humidity_feature <- function(df) {
 }
 ```
 
-
-
 ##### EDA Conclusions
 
 Here we will run the functions related to the changes we would like to make in the feature due to the conclusions we reached in the eda phase:
@@ -3925,7 +3882,6 @@ train_filtered_2000m_data
 By splitting the data into training and validation sets, we can train our model on the training set and assess its performance on the validation set. This helps us understand how well our model is likely to perform on new, unseen data. Additionally, inorder to avoid data leaking, and understanding that onehotencoder is based on fitting and transforming, from now on will work with test_train split.
 
 Since our project is based on time intervals (time series), it is essential to respect the chronological order of the data. Our training data spans 6 months, 
-
 *TODO decide on a correct test_train split*
 
 ```{r}
@@ -3959,6 +3915,6 @@ Since the test data doesn't include specific locations (latitude, longitude), an
 ```{r model_2_filtered_data}
 ```
 
-## Conclusion
+## Conclusions
 ```{r conclusion}
 ```

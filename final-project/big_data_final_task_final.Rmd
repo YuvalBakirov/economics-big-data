@@ -2141,7 +2141,7 @@ numerical_features
 
 --------
 
-Removing wind_speed and clouds_all:
+Removing wind_speed, clouds_all and humidity:
 1. wind_speed:
 * The correlation between wind_speed and number_of_pickups is very low: -0.02 (1000m) and -0.03 (2000m).
 * In an urban environment like New York City, wind speed has minimal impact on transportation behavior. The city's infrastructure, such as sheltered streets and extensive public transit, reduces the influence of everyday wind fluctuations on Uber demand.
@@ -2150,9 +2150,13 @@ Removing wind_speed and clouds_all:
 * The correlation between clouds_all and number_of_pickups is weak: 0.14 in both datasets.
 * Cloudiness doesn't significantly impact transportation behavior. Unlike rain or snow, cloud cover alone isn't disruptive enough to influence Uber demand in New York City, making it less relevant for predictive modeling.
 
+3. humidity:
+* The correlation between humidity and number_of_pickups is weak: 0.12 (1000m) and 0.11 (2000m).
+* Humidity is also a variable that is not expected to directly affect the number of pickups, as there are other, more impactful temperature-related features We prefer to retain. 
+
 Lets run the function to remove those features:
 ```{r}
-features_to_remove <- c("wind_speed", "clouds_all")
+features_to_remove <- c("wind_speed", "clouds_all", "humidity")
 ```
 
 ```{r}
@@ -3633,8 +3637,8 @@ Additionally, the 2000m data shows more accidents overall due to its larger cove
 ##### Events
 
 ```{r}
-# Function to create Event Clustering Visualization with a trend line
-event_clustering_visualization <- function(data, dataset_name, color_low, color_mid, color_high) {
+# Function to create a box plot to show the influence of event clusters on Uber demand with ordered levels
+event_cluster_box_plot <- function(data, dataset_name, color_high, color_mid, color_low) {
   
   # Classify days based on total event counts into low, moderate, and high clusters
   data <- data %>%
@@ -3648,41 +3652,37 @@ event_clustering_visualization <- function(data, dataset_name, color_low, color_
         total_events <= quantile(total_events, 0.33) ~ "Low",
         total_events <= quantile(total_events, 0.66) ~ "Moderate",
         TRUE ~ "High"
-      )
+      ),
+      event_cluster = factor(event_cluster, levels = c("High", "Moderate", "Low"))  # Set factor order
     )
   
-  # Create a scatter plot to visualize clusters with a trend line
-  ggplot(data, aes(x = total_events, y = total_pickups, color = event_cluster)) +
-    geom_point(size = 3) +
-    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, color = "black", linetype = "dashed") +  # Add a linear trend line
-    scale_color_manual(values = c("Low" = color_low, "Moderate" = color_mid, "High" = color_high)) +
+  # Create the box plot
+  ggplot(data, aes(x = event_cluster, y = total_pickups, fill = event_cluster)) +
+    geom_boxplot() +
+    scale_fill_manual(values = c("High" = color_high, "Moderate" = color_mid, "Low" = color_low)) +
     labs(
-      title = paste("Event Clustering vs Uber Demand -", dataset_name),
-      x = "Total Events",
-      y = "Total Uber Pickups",
-      color = "Event Clusters"
+      title = paste("Uber Pickups by Event Cluster -", dataset_name),
+      x = "Event Cluster",
+      y = "Total Uber Pickups"
     ) +
     theme_minimal() +
-    theme(legend.position = "right")
+    theme(legend.position = "none")  # Remove legend as it's unnecessary here
 }
-```
 
+```
 for 1000m:
 ```{r}
-event_clustering_visualization(train_filtered_1000m_data, "1000m Data", "blue", "yellow", "red")
+event_cluster_box_plot(train_filtered_1000m_data, "1000m Data", "red", "yellow", "blue")
 ```
 
-
-for 200m:
+for 2000m:
 ```{r}
-event_clustering_visualization(train_filtered_2000m_data, "2000m Data", "blue", "yellow", "red")
+event_cluster_box_plot(train_filtered_2000m_data, "2000m Data", "red", "yellow", "blue")
 ```
+The total number of events in New York City encompasses a wide variety of activities, from large gatherings to smaller, local events. Within the 1000-meter radius of the Empire State Building, the impact of these events on Uber demand appears minimal, as seen in the similar levels of pickups across "Low," "Moderate," and "High" event clusters. This is likely because many events in the city may not directly impact the immediate area around the Empire State. As a result, the data does not show a significant increase in Uber pickups with higher event counts.
 
-The total number of events in New York City includes a broad range of activities, from large gatherings to smaller local events. When analyzing Uber demand within a 1000-meter radius of the Empire State Building, the impact of these events appears minimal. This is likely because the event data represents activities across the entire city, many of which may not affect the immediate area around the Empire State. As a result, the trend line shows a slightly negative slope (almost a straight line), suggesting no significant correlation between the number of events and Uber demand. The small negative trend may also be due to outliers at the far end of the total events axis.
+In contrast, within the larger 2000-meter radius, which covers a broader part of New York City, there is a clearer pattern. Higher event clusters ("High") show increased Uber demand, suggesting that events across this wider area have a more noticeable influence on transportation needs. This supports the decision to retain the total_events feature in the 2000-meter dataset, as it provides valuable insight into demand variations, while removing it from the 1000-meter dataset where its impact is negligible.
 
-However, in a larger 2000-meter radius, covering more parts of New York and extending into Newark, the relationship between total events and Uber demand becomes clearer. The trend line here shows a positive slope, indicating that as the number of total events increases, so does the minimum demand for Uber, suggesting that events spread across a broader area begin to have a greater influence on transportation needs.
-
-Given the minimal impact of total events on Uber demand in the smaller 1000-meter radius and the slightly negative trend, we will remove the total_events feature from the 1000-meter dataset to focus on more relevant factors for predicting demand.
 
 ```{r}
 # Function to remove the event_count feature from the 1000m dataset
@@ -3701,90 +3701,104 @@ remove_total_events_1000m <- function(df) {
 ```
 
 
-##### Feels like & Humidity
+##### Feels like
 
 ```{r}
-# Function to define thresholds, print them, and plot the behavior with percentages on top of bars
-plot_feels_like_humidity_vs_pickups <- function(data, dataset_name) {
-  # Calculate range for humidity and feels_like
-  humidity_range <- max(data$humidity, na.rm = TRUE) - min(data$humidity, na.rm = TRUE)
+# Function to define thresholds, print them, and plot behavior for feels_like with four groups
+# and show the percentage of time spent in each range in the legend
+plot_feels_like_vs_pickups <- function(data, dataset_name) {
+  # Calculate range for feels_like
   feels_like_range <- max(data$feels_like, na.rm = TRUE) - min(data$feels_like, na.rm = TRUE)
   
-  # Define thresholds for high and low humidity and feels_like
-  low_humidity_threshold <- min(data$humidity, na.rm = TRUE)
-  high_humidity_threshold <- low_humidity_threshold + humidity_range / 2
+  # Define thresholds for high, mid-high, mid-low, and low feels_like
   low_feels_like_threshold <- min(data$feels_like, na.rm = TRUE)
-  high_feels_like_threshold <- low_feels_like_threshold + feels_like_range / 2
+  mid_low_feels_like_threshold <- low_feels_like_threshold + feels_like_range / 4
+  mid_high_feels_like_threshold <- low_feels_like_threshold + feels_like_range / 2
+  high_feels_like_threshold <- low_feels_like_threshold + 3 * (feels_like_range / 4)
   
   # Print the thresholds
   cat("Feels Like Range:\n")
-  cat("Low: ", low_feels_like_threshold, "-", high_feels_like_threshold, "\n")
+  cat("Low: ", low_feels_like_threshold, "-", mid_low_feels_like_threshold, "\n")
+  cat("Mid-Low: ", mid_low_feels_like_threshold, "-", mid_high_feels_like_threshold, "\n")
+  cat("Mid-High: ", mid_high_feels_like_threshold, "-", high_feels_like_threshold, "\n")
   cat("High: ", high_feels_like_threshold, "-", max(data$feels_like, na.rm = TRUE), "\n\n")
   
-  cat("Humidity Range:\n")
-  cat("Low: ", low_humidity_threshold, "-", high_humidity_threshold, "\n")
-  cat("High: ", high_humidity_threshold, "-", max(data$humidity, na.rm = TRUE), "\n\n")
-  
-  # Categorize data into four groups based on humidity and feels_like
+  # Categorize data into four groups based on feels_like
   data <- data %>%
     mutate(
-      humidity_group = ifelse(humidity < high_humidity_threshold, "Low Humidity", "High Humidity"),
-      feels_like_group = ifelse(feels_like < high_feels_like_threshold, "Low Feels Like", "High Feels Like"),
-      group = paste(humidity_group, feels_like_group, sep = " - ")
+      feels_like_group = case_when(
+        feels_like < mid_low_feels_like_threshold ~ paste("Low: ", round(low_feels_like_threshold, 1), "-", round(mid_low_feels_like_threshold, 1)),
+        feels_like < mid_high_feels_like_threshold ~ paste("Mid-Low: ", round(mid_low_feels_like_threshold, 1), "-", round(mid_high_feels_like_threshold, 1)),
+        feels_like < high_feels_like_threshold ~ paste("Mid-High: ", round(mid_high_feels_like_threshold, 1), "-", round(high_feels_like_threshold, 1)),
+        TRUE ~ paste("High: ", round(high_feels_like_threshold, 1), "-", round(max(data$feels_like, na.rm = TRUE), 1))
+      )
     )
   
   # Summarize pickups by group and calculate percentage
   group_summary <- data %>%
-    group_by(group) %>%
-    summarise(total_pickups = sum(number_of_pickups, na.rm = TRUE)) %>%
-    mutate(pickup_percentage = (total_pickups / sum(total_pickups)) * 100)
+    group_by(feels_like_group) %>%
+    summarise(
+      total_pickups = sum(number_of_pickups, na.rm = TRUE),
+      time_count = n()  # Count the number of times in each group
+    ) %>%
+    mutate(
+      pickup_percentage = (total_pickups / sum(total_pickups)) * 100,
+      time_percentage = (time_count / sum(time_count)) * 100  # Percentage of time in each range
+    )
   
-  # Create a bar plot with percentages on top of the bars
-  ggplot(group_summary, aes(x = group, y = pickup_percentage, fill = group)) +
-    geom_bar(stat = "identity", color = "black") +
-    geom_text(aes(label = sprintf("%.1f%%", pickup_percentage)), vjust = -0.5, size = 5) +  # Add percentages on top of bars
+  # Arrange levels in order from High to Low
+  group_summary$feels_like_group <- factor(group_summary$feels_like_group, 
+                                           levels = c(
+                                             paste("High: ", round(high_feels_like_threshold, 1), "-", round(max(data$feels_like, na.rm = TRUE), 1)),
+                                             paste("Mid-High: ", round(mid_high_feels_like_threshold, 1), "-", round(high_feels_like_threshold, 1)),
+                                             paste("Mid-Low: ", round(mid_low_feels_like_threshold, 1), "-", round(mid_high_feels_like_threshold, 1)),
+                                             paste("Low: ", round(low_feels_like_threshold, 1), "-", round(mid_low_feels_like_threshold, 1))
+                                           ))
+
+  # Define colors dynamically based on levels
+  colors <- c("red", "orange", "yellow", "blue")
+  names(colors) <- levels(group_summary$feels_like_group)
+  
+  # Create custom legend labels with time percentages
+  legend_labels <- paste0(levels(group_summary$feels_like_group), " (Time: ", sprintf("%.1f%%", group_summary$time_percentage), ")")
+  
+  # Create a bar plot with Uber demand percentages and custom legend for time percentages
+  ggplot(group_summary) +
+    geom_bar(aes(x = feels_like_group, y = pickup_percentage, fill = feels_like_group), 
+             stat = "identity", color = "black", position = position_dodge(width = 0.7), width = 0.5) +
+    geom_text(aes(x = feels_like_group, y = pickup_percentage, 
+                  label = sprintf("%.1f%%", pickup_percentage)), vjust = -0.5, size = 5, color = "black") +
     labs(
-      title = paste("Uber Demand by Feels Like and Humidity Groups -", dataset_name),
-      x = "Group",
-      y = "Percentage of Total Uber Pickups (%)"
+      title = paste("Uber Demand by Feels Like Ranges -", dataset_name),
+      x = "Feels Like Temperature Range",
+      y = "Percentage of Total Uber Pickups (%)",
+      fill = "Feels Like Temperature Ranges\n(includes Time Distribution)"
     ) +
-    scale_fill_manual(values = c("High Humidity - High Feels Like" = "red", 
-                                 "High Humidity - Low Feels Like" = "orange",
-                                 "Low Humidity - High Feels Like" = "purple",
-                                 "Low Humidity - Low Feels Like" = "blue")) +
+    scale_fill_manual(values = colors, labels = legend_labels) +
     scale_y_continuous(limits = c(0, 100), labels = scales::percent_format(scale = 1)) +  # Ensure y-axis ranges from 0 to 100
     theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+    theme(
+      axis.text.x = element_text(angle = 30, hjust = 1, size = 12),  # Adjust x-axis labels for better readability
+      axis.text.y = element_text(size = 12),
+      axis.title = element_text(size = 14),
+      plot.title = element_text(size = 16, face = "bold")
+    )
 }
 ```
 
 ```{r}
-plot_feels_like_humidity_vs_pickups(train_filtered_1000m_data, "1000m Data")
+plot_feels_like_vs_pickups(train_filtered_1000m_data, "1000m Data")
 ```
 
 ```{r}
-plot_feels_like_humidity_vs_pickups(train_filtered_2000m_data, "2000m Data")
+plot_feels_like_vs_pickups(train_filtered_2000m_data, "2000m Data")
 ```
 
-In these visualizations, we observe how the different combinations of "feels like" temperature and humidity impact Uber demand. For both the 1000-meter and 2000-meter radius data, the largest percentage of Uber pickups occurs in conditions where the "feels like" temperature is high and the humidity is low, followed by the group with high "feels like" and high humidity.
+The "feels like" temperature significantly influences Uber demand in this dataset, which primarily covers the warmer summer months. The majority of Uber pickups are concentrated in "feels like" temperature ranges that are moderately high (18.8 - 27.9°C), as seen by the high percentage of pickups in this range for both the 1000m and 2000m datasets. This pattern suggests that when the weather is comfortable or mildly warm, people are more likely to go out, leading to higher Uber demand.
 
-The relatively smaller percentages of Uber demand in the groups where "feels like" is low, regardless of humidity, suggest that the "feels like" temperature plays a more significant role in influencing demand compared to humidity. While humidity may have some impact, especially in conjunction with high "feels like" temperatures, its overall influence appears limited.
+On the other hand, in extreme "feels like" conditions—both high and low—the demand for Uber drops. In particularly hot weather (27.9 - 37°C), fewer people may choose to leave their homes, possibly preferring to work remotely or avoid outings to stay comfortable. Similarly, in cooler conditions (0.5 - 9.7°C), there may also be reduced activity, though this temperature range is less represented in the summer data.
 
-Given this distribution, it might be more efficient to focus on "feels like" temperature as the primary factor and remove humidity from the analysis. This would streamline the features being used in modeling without sacrificing much predictive power, as the impact of humidity alone seems marginal compared to the stronger effect of "feels like" temperature on Uber demand.
-
-```{r}
-# Function to remove 'humidity' feature
-remove_humidity_feature <- function(df) {
-  
-  # Remove 'humidity' column from the dataframe if it exists
-  if ("humidity" %in% colnames(df)) {
-    df <- df %>% select(-humidity)
-  }
-  
-  # Return the updated dataframe
-  return(df)
-}
-```
+Overall, these insights reflect the tendency of people to stay home when the weather is uncomfortable, whether it’s too hot or relatively cool. Thus, "feels like" temperature becomes a significant factor in Uber demand, with moderate, comfortable weather encouraging more travel, while extreme temperatures have the opposite effect.
 
 ##### EDA Conclusions
 
@@ -3805,9 +3819,6 @@ train_filtered_1000m_data <- create_is_persons_injured_feature(train_filtered_10
 
 # Remove total_events
 train_filtered_1000m_data <- remove_total_events_1000m(train_filtered_1000m_data)
-
-# Remove humidity
-train_filtered_1000m_data <- remove_humidity_feature(train_filtered_1000m_data)
 ```
 
 ```{r}
@@ -3815,7 +3826,7 @@ train_filtered_1000m_data <- remove_humidity_feature(train_filtered_1000m_data)
 cat_remove <- c("memorial_day", "independence_day", "labor_day")
 categorical_features_1000 <- setdiff(categorical_features_1000, cat_remove)
 
-num_remove <- c("humidity", "event_count", "number_of_persons_injured")
+num_remove <- c("event_count", "number_of_persons_injured")
 numerical_features_1000 <- setdiff(numerical_features_1000, num_remove)
 
 # Features to add
@@ -3848,17 +3859,13 @@ train_filtered_2000m_data <- create_is_holiday_feature(train_filtered_2000m_data
 
 # Update with is_persons_injured feature
 train_filtered_2000m_data <- create_is_persons_injured_feature(train_filtered_2000m_data)
-
-# Remove humidity
-train_filtered_2000m_data <- remove_humidity_feature(train_filtered_2000m_data)
 ```
 
 ```{r}
 # Features to remove
 categorical_features_2000 <- setdiff(categorical_features_2000, cat_remove)
 
-num_remove <- c("humidity", "number_of_persons_injured")
-numerical_features_2000 <- setdiff(numerical_features_2000, num_remove)
+numerical_features_2000 <- setdiff(numerical_features_2000, "number_of_persons_injured")
 
 # Features to add
 cat_add <- c("is_holiday", "is_persons_injured")

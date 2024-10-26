@@ -1240,7 +1240,7 @@ weather_data_selected <- weather_data %>%
 ```{r}
 weather_data_selected
 ```
-
+-TODO- 
 The features we added:
 Snow (is_snowing_last_hour): It is highly unlikely to have snow in New York in September. Therefore, the feature related to snow is most likely irrelevant to our prediction task and can be excluded.
 From google: While it's possible to snow as early as November and as late as April, snowfall in these months is extremely unlikely. Snowfall is certainly not of concern from May through October, outside of the extremely rare occurrence.
@@ -1596,7 +1596,8 @@ How Merging This Data Can Help Final Predictions:
 arrests_1000m <- read.csv("arrests_F_and_M_1000m.csv")
 arrests_2000Am <- read.csv("arrests_F_and_M_2000Am.csv")
 ```
-To avoid reaching a state of complete multicollinearity, you can remove both felony_count and misdemeanor_count, keeping only total_arrests for your predictions. This will ensure that the model does not suffer from redundancy due to the perfect correlation between total_arrests, felony_count, and misdemeanor_count.
+
+To avoid reaching a state of complete multicollinearity, we will remove both felony_count and misdemeanor_count, keeping only total_arrests for our predictions. This will ensure that the model does not suffer from redundancy due to the perfect correlation between total_arrests, felony_count, and misdemeanor_count.
 ```{r}
 # Function to remove 'felony_count' and 'misdemeanor_count' from the dataset
 clean_arrest_data <- function(data) {
@@ -2536,6 +2537,48 @@ plot_top_lowest_highest_pickups_by_month <- function(data, feature, color_low, c
 
 ```
 
+Top n days with the lowest and highest total number of pickups:
+```{r}
+# Function to show top n days with lowest and highest total number of pickups
+plot_top_lowest_highest_pickups <- function(data, feature, color_low, color_high, dataset_name, n) {
+  
+  # Group by day and calculate the total number of pickups per day
+  daily_summary <- data %>%
+    group_by(day = as.Date(time_interval)) %>%
+    summarise(total_pickups = sum(!!sym(feature), na.rm = TRUE)) %>%
+    arrange(total_pickups)  # Sort by total_pickups
+  
+  # Get the top n days with the lowest pickups
+  lowest_n_days <- head(daily_summary, n)
+  
+  # Get the top n days with the highest pickups
+  highest_n_days <- tail(daily_summary, n)
+  
+  # Create bar plot for the lowest n days
+  plot_lowest <- ggplot(lowest_n_days, aes(x = reorder(day, total_pickups), y = total_pickups)) +
+    geom_bar(stat = "identity", color = "black", fill = color_low) +
+    labs(
+      title = paste("Top", n, "Days with Lowest Pickups -", dataset_name),
+      x = "Day",
+      y = "Total Pickups"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Create bar plot for the highest n days
+  plot_highest <- ggplot(highest_n_days, aes(x = reorder(day, -total_pickups), y = total_pickups)) +
+    geom_bar(stat = "identity", color = "black", fill = color_high) +
+    labs(
+      title = paste("Top", n, "Days with Highest Pickups -", dataset_name),
+      x = "Day",
+      y = "Total Pickups"
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  return(list(lowest = plot_lowest, highest = plot_highest))
+}
+```
+
 ----------------------------
 
 For the 1000m data:
@@ -2563,6 +2606,12 @@ plots <- plot_top_lowest_highest_pickups_by_month(train_filtered_1000m_data, "nu
 plots
 ```
 
+```{r}
+plots <- plot_top_lowest_highest_pickups(train_filtered_1000m_data, "number_of_pickups", "lightblue", "blue", "1000m Data", 3)
+plots
+```
+
+
 The monthly, weekly, and daily graphs reveal notable patterns regarding Uber demand:
 
 * Monthly Behavior:
@@ -2578,15 +2627,17 @@ The monthly, weekly, and daily graphs reveal notable patterns regarding Uber dem
 - The daily chart shows a relatively consistent pattern with periodic spikes, indicating some days experience significantly higher demand than others.
 - The periodic nature of these spikes might indicate certain recurring events, possibly weekends or holidays, driving these fluctuations.
 
-* Daily Picks: -TODO-
-(If these events were one-time occurrences, they might be considered outliers in the data, as they caused an unusual spike in transportation demand on those particular days.)
+* Daily Picks: 
 - Dates with High Uber Pickups:
 1. On May 1, 2014, the Empire State Building celebrated its 83rd anniversary. the Empire State Building often hosts celebrations involving special lighting, VIP tours, or other commemorative activities around May 1, the anniversary date. This is probably the reason for the high demand for Uber on April 30.
 2. On July 15, 2014, one major event in New York was Bruno Mars' concert at Madison Square Garden, which was part of his "Moonshine Jungle Tour." This event likely contributed to the spike in Uber pickups, as concerts at such a large venue can draw significant crowds, increasing the need for transportation services. 
 3. Regarding September 5, 2014, this date coincides with the US Open Tennis Championships, which take place annually in New York at Flushing Meadows. This major international sporting event attracts tens of thousands of spectators, which would have increased transportation demand, explaining the higher Uber pickup numbers.
+4. June 19, or Juneteenth, has been celebrated for years as a significant cultural day marking the emancipation of enslaved African Americans. Even though it only became a federal holiday in 2021, high Uber pickup rates on this date may reflect increased travel to cultural events or gatherings, highlighting how specific days with cultural relevance can temporarily boost local demand. 
 
 - Dates with Low Uber Pickups:
 1. On April 6, 2014, New York City hosted several cultural and free events, one of the most notable being the New York Tartan Day Parade, celebrating Scottish heritage with thousands of people lining the streets of Manhattan. The parade featured bagpipers, dancers, and other Scottish cultural displays, which drew large crowds. In addition, there was the ongoing New York International Auto Show, attracting visitors to see the latest trends in the automotive industry. These large-scale events likely influenced transportation patterns in the city, possibly contributing to a reduction in Uber pickups as people opted for public transportation or walked to central event areas.
+2. 2014-04-07 - this is fourth of july (Independence Day). Fourth of july in new york 2014: Macy's Fireworks over the East River on Friday, July 4, 2014. Credit: Diana Robinson. We guess people preferred to walk and watch the fireworks.
+
 
 In summary, the stronger periods for Uber demand are found in the summer months, particularly in July, with sharp drops around late June and late August. The weekly and daily charts provide more detailed insights into these fluctuations, where the drop in late June corresponds to the monthly decline in June, and the spike in July aligns with the overall summer peak.
 
@@ -2638,6 +2689,12 @@ plots <- plot_top_lowest_highest_pickups_by_month(train_filtered_2000m_data, "nu
 plots
 ```
 
+```{r}
+plots <- plot_top_lowest_highest_pickups(train_filtered_2000m_data, "number_of_pickups", "lightgreen", "green", "2000m Data", 3)
+plots
+```
+
+
 The monthly, weekly, and daily graphs reveal notable patterns regarding Uber demand within a 2000-meter radius from the Empire State:
 
 * Monthly Behavior: Uber demand shows a gradual increase from April to August, with a peak in August.
@@ -2646,16 +2703,23 @@ The monthly, weekly, and daily graphs reveal notable patterns regarding Uber dem
 
 * Daily Behavior: There is consistent demand throughout the days, with notable peaks in early September.
 
-* Daily Picks: -TODO-
+* Daily Picks: 
+- Dates with High Uber Pickups:
+1. September 4-6, 2014: Early September typically sees an increase in New York City activity due to Labor Day weekend events. Celebrations often include concerts, festivals, and major events as the city transitions from summer to fall. Labor Day (September 1 in 2014) also marks a time when tourists and locals alike attend last-minute summer gatherings, boosting transportation needs across the city. Also, September 4: School sessions begin for all students.
+2.September 6: The annual NYC Labor Day Parade took place, drawing large crowds to Fifth Avenue. This event celebrates the contributions of organized labor and showcases various unions, creating a vibrant atmosphere with music, banners, and marchers filling the streets. As it marks the end of summer, this parade often brings an uptick in local travel and celebrations.
+3. New York Fashion Week 2014 - September 4, 2014 till September 11, 2014.
+4. June 19, or Juneteenth (we mwntion before).
+
 - Dates with Low Uber Pickups:
 1. April 20-21, 2014: Easter Sunday, which fell on April 20 in 2014, likely reduced demand for Uber services due to family gatherings and church services throughout the day. Many people traditionally spend this holiday with loved ones or attend church services, potentially reducing overall city movement and nightlife activity. (April 20	Easter, April 21	Easter Monday)
-2. April 13 is a weekend (Sunday)
+2. May 25, 2014: Memorial Day Observed (schools closed).
 
-- Dates with High Uber Pickups:
-1. September 4-6, 2014: Early September typically sees an increase in New York City activity due to Labor Day weekend events. Celebrations often include concerts, festivals, and major events as the city transitions from summer to fall. Labor Day (September 1 in 2014) also marks a time when tourists and locals alike attend last-minute summer gatherings, boosting transportation needs across the city.
-2.September 6: The annual NYC Labor Day Parade took place, drawing large crowds to Fifth Avenue. This event celebrates the contributions of organized labor and showcases various unions, creating a vibrant atmosphere with music, banners, and marchers filling the streets. As it marks the end of summer, this parade often brings an uptick in local travel and celebrations.
-3. New York Fashion Week 2014 - September 4, 2014 till September 11, 2014
+----------------------------
 
+NOTE:
+Many of the events we observed are recurring, expected to happen each year, and typical of a highly touristic city like New York. With numerous significant dates and events, particularly around the Empire State Building, Uber demand naturally fluctuates with these attractions and gatherings. Given this context, we chose not to filter out potential "noise" from the data, as these fluctuations likely reflect genuine patterns in Uber demand.
+
+Additionally, some of our features, such as holidays, weekends, and general events, capture these recurring occasions, providing insight into how they influence demand patterns over time.
 
 ----------------------------
 
@@ -3764,8 +3828,6 @@ remove_humidity_feature <- function(df) {
 ```
 
 
----------------
-
 
 ##### EDA Conclusions
 
@@ -3859,14 +3921,12 @@ train_filtered_2000m_data
 ```
 
 
----------------
-
-#### Preprocessing Steps
-
-##### Spliting the data
+#### Spliting the data
 By splitting the data into training and validation sets, we can train our model on the training set and assess its performance on the validation set. This helps us understand how well our model is likely to perform on new, unseen data. Additionally, inorder to avoid data leaking, and understanding that onehotencoder is based on fitting and transforming, from now on will work with test_train split.
 
-Since our project is based on time intervals (time series), it is essential to respect the chronological order of the data. Our training data spans 6 months, *TODO decide on a correct test_train split*
+Since our project is based on time intervals (time series), it is essential to respect the chronological order of the data. Our training data spans 6 months, 
+
+*TODO decide on a correct test_train split*
 
 ```{r}
 range(train_filtered_1000m_data$time_interval)
@@ -3875,25 +3935,8 @@ range(train_filtered_1000m_data$time_interval)
 ```{r}
 range(train_filtered_2000m_data$time_interval)
 ```
+
 ```{r split to val and train}
-
-```
-
-##### Outlier Handling
-Outliers should be detected and handled based solely on the training data. This avoids influencing the validation data and ensures that the validation set remains unbiased.
-
-After analyzing the EDA, we observed that some days have extreme Uber demand due to one-off events. We will treat these as outliers and address them using noise-handling techniques, as is commonly done with time series data. These methods may include applying smoothing techniques, capping extreme values, or employing anomaly detection to reduce the impact of such events on the overall model. This approach will allow us to account for anomalies while preserving the overall trends in the data.
-
-להסתכל בכל חודש כמה חרגים יש
-
-```{r}
-
-```
-
-##### Normalization
-Why normalize: when will use Non-tree based algorithms, especially K-NN, normalization will play a big role, since calculation either distance / any type of effect (values increasing / deacreasing) we would like to have all the features have the same "size".
-
-```{r}
 
 ```
 

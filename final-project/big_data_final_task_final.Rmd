@@ -1821,6 +1821,13 @@ NAs for only number_of_pickups - this is what we need to predict
 # write.csv(train_filtered_2000m_data, "train_filtered_2000m_data.csv")
 ```
 
+final dfs before changing them in the EDA:
+```{r}
+train_1000m_data_copy <- train_filtered_1000m_data
+train_2000m_data_copy <- train_filtered_2000m_data
+test_data_copy <- test_fixed_data
+```
+
 ### 2. Exploratory Analysis
 1. Actions Taken on the Data (Data Cleaning and Transformation):
 Start by documenting what actions have been performed on the data:

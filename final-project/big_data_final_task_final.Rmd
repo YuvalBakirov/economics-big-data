@@ -969,6 +969,8 @@ We will also add:
 
 2. is_night: binary feature to identify if the time interval is in the evening or night to capture.
 
+3. split the time interval to: dayInWeek, dayInMonth, month, year, hour, minute
+
 ##### is_weekend
 Add The is_weekend Feature:
 ```{r adding_is_weekend}
@@ -1044,6 +1046,46 @@ train_filtered_2000m_data
 test_fixed_data <- add_is_night(test_fixed_data)
 test_fixed_data
 ```
+
+##### split the time intervals
+```{r}
+# Function to split time_interval into dayInWeek, dayInMonth, month, year, hour, minute
+split_time_interval <- function(df) {
+  
+  # Ensure the time_interval is in POSIXct format
+  df$time_interval <- as.POSIXct(df$time_interval, format = "%Y-%m-%d %H:%M:%S")
+  
+  # Extract numeric components
+  df$dayInWeek <- as.numeric(format(df$time_interval, "%u"))  # Day of the week (1 = Monday, 7 = Sunday)
+  df$dayInMonth <- as.numeric(format(df$time_interval, "%d")) # Day of the month
+  df$month <- as.numeric(format(df$time_interval, "%m"))      # Month
+  df$year <- as.numeric(format(df$time_interval, "%Y"))       # Year
+  df$hour <- as.numeric(format(df$time_interval, "%H"))       # Hour
+  df$minute <- as.numeric(format(df$time_interval, "%M"))       # Hour
+  
+  return(df)
+}
+```
+
+```{r}
+# Apply the function to the 1000m dataset
+train_filtered_1000m_data <- split_time_interval(train_filtered_1000m_data)
+train_filtered_1000m_data
+```
+
+```{r}
+# Apply the function to the 2000m dataset
+train_filtered_2000m_data <- split_time_interval(train_filtered_2000m_data)
+train_filtered_2000m_data
+```
+
+```{r}
+# Apply the function to the test dataset
+test_fixed_data <- split_time_interval(test_fixed_data)
+test_fixed_data
+```
+
+
 
 #### Data from the Web: External Data Integration
 
@@ -1591,10 +1633,6 @@ get_duplicate_time_intervals(arrests_2000Am, "arrest_date")
 
 Transform Daily Arrest Data to 15-Minute Intervals:
 ```{r}
-
-```
-
-```{r}
 # Function to replicate daily arrests data across all 15-minute intervals in each day
 replicate_arrests_to_intervals <- function(arrests_data) {
   # Convert the arrest_date to Date format
@@ -1799,7 +1837,8 @@ We added a lot of features, we probably won't need all of them, we'll start with
 numerical_features <- c(
   "number_of_pickups", "temp", "humidity", "wind_speed", "feels_like", 
   "clouds_all", "number_of_persons_injured", "number_of_persons_killed", 
-  "number_of_crashes", "event_count", "taxis_pickup_count", "total_arrests"
+  "number_of_crashes", "event_count", "taxis_pickup_count", "total_arrests", "dayInWeek",
+  "dayInMonth", "month", "year", "hour", "minute"
 )
 
 numerical_features
@@ -1866,8 +1905,11 @@ Insights from the Correlation Matrix (1000m Data):
 
 3. Handling Missing Values (NAs):
 * number_of_persons_killed shows missing values (NAs). We will address these missing values late.
+* year - Probably because there is only one year in the data - 2014. We will remove it.
 
 4. Key Takeaways: We will focus on reducing redundancy by addressing multicollinearity, especially between temp and feels_like. Features like taxi pickups and total arrests seem to influence Uber demand, while nighttime and weekends are associated with reduced activity. Low correlation features like wind speed and number of persons injured may have little predictive power and can potentially be excluded from the model.
+
+Note: We see that there are low correlations with the variables: hour, minute and dayInMonth with the label. For now we will keep it as is them but we may remove them later.
 
 ```{r}
 # plot corr mat for train_filtered_2000m_data:
@@ -1886,11 +1928,17 @@ Clouds_all and Humidity (0.61): This moderate correlation indicates some overlap
 * Low Correlation:
 - Wind_speed (-0.03) and Number_of_persons_killed (0.01) exhibit very weak correlations with pickups, suggesting little to no impact on Uber demand. These features may not be useful predictors.
 
-3. Key Takeaways: We will prioritize reducing multicollinearity by addressing the strong correlation between temp and feels_like. Features like taxi pickups, total arrests, event count, and number of crashes seem to have a clear relationship with Uber demand, making them important predictors. Conversely, low correlation features like wind speed and number of persons killed may not significantly contribute to the model and could be excluded to simplify the analysis.
+3. Handling Missing Values (NAs):
+* year - Probably because there is only one year in the data - 2014. We will remove it.
+
+4. Key Takeaways: We will prioritize reducing multicollinearity by addressing the strong correlation between temp and feels_like. Features like taxi pickups, total arrests, event count, and number of crashes seem to have a clear relationship with Uber demand, making them important predictors. Conversely, low correlation features like wind speed and number of persons killed may not significantly contribute to the model and could be excluded to simplify the analysis.
+
+Note: We see that there are low correlations with the variables: minute and dayInMonth with the label. For now we will keep it as is them but we may remove them later.
 
 ---------------
 What about NAs:
 The NA values in the number_of_persons_killed of the correlation matrix occur because the this feature likely contains only a constant value (like all zeros), resulting in a standard deviation of zero. Correlation cannot be computed if there is no variability in the data, which leads to NA in the correlation matrix.
+Also, this is the same explanation for year feature (we only habe one year of 2014).
 
 Why This Happens:
 Zero Variance: If a feature contains only a single value for all rows (e.g., all zeros or all NAs), its standard deviation is zero. Since correlation measures the co-movement of two variables, the absence of variability makes it impossible to compute correlation.
@@ -2051,28 +2099,13 @@ remove_features <- function(data, features_to_remove) {
 ```
 
 ```{r}
-features_to_remove <- c("is_snowing_last_hour", "number_of_persons_killed")
+features_to_remove <- c("is_snowing_last_hour", "number_of_persons_killed", "year")
 ```
-
-```{r}
-train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
-train_filtered_1000m_data
-```
-
-```{r}
-train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
-train_filtered_2000m_data
-```
-
-```{r}
-test_fixed_data <- remove_features(test_fixed_data, features_to_remove)
-test_fixed_data
-```
-
 
 ```{r}
 categorical_features
 ```
+
 ```{r}
 numerical_features
 ```
@@ -2083,6 +2116,8 @@ numerical_features
 ```{r}
 # Define a function to fit the linear model and calculate VIF for numerical features only
 calculate_vif <- function(data, dataset_name, numerical_features) {
+  numerical_features<- setdiff(numerical_features, c("is_snowing_last_hour", "number_of_persons_killed", "year"))
+  
   # Create a formula with only numerical features for VIF calculation
   formula <- as.formula(paste("number_of_pickups ~", paste(numerical_features[-1], collapse = " + ")))
   
@@ -2124,31 +2159,7 @@ We have identified (as we expected) a very high Variance Inflation Factor (VIF) 
 
 Lets run the function to remove this feature:
 ```{r}
-features_to_remove <- c("temp")
-```
-
-```{r}
-train_filtered_1000m_data <- remove_features(train_filtered_1000m_data, features_to_remove)
-train_filtered_1000m_data
-```
-
-```{r}
-train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
-train_filtered_2000m_data
-```
-
-```{r}
-test_fixed_data <- remove_features(test_fixed_data, features_to_remove)
-test_fixed_data
-```
-
-
-```{r}
-categorical_features
-```
-
-```{r}
-numerical_features
+features_to_remove <- append(features_to_remove, "temp")
 ```
 
 --------
@@ -2168,7 +2179,12 @@ Removing wind_speed, clouds_all and humidity:
 
 Lets run the function to remove those features:
 ```{r}
-features_to_remove <- c("wind_speed", "clouds_all", "humidity")
+features_to_remove <- append(features_to_remove, c("wind_speed", "clouds_all", "humidity"))
+```
+
+##### Final removes
+```{r}
+features_to_remove
 ```
 
 ```{r}
@@ -3935,11 +3951,11 @@ test_fixed_data_2000
 
 Lets save to CSVs:
 ```{r}
-write.csv(train_filtered_1000m_data, "final_train_filtered_1000m_data.csv")
-write.csv(test_fixed_data_1000, "final_test_fixed_data_1000.csv")
-
-write.csv(train_filtered_2000m_data, "final_train_filtered_2000m_data.csv")
-write.csv(test_fixed_data_2000, "final_test_fixed_data_2000.csv")
+# write.csv(train_filtered_1000m_data, "final_train_filtered_1000m_data.csv")
+# write.csv(test_fixed_data_1000, "final_test_fixed_data_1000.csv")
+# 
+# write.csv(train_filtered_2000m_data, "final_train_filtered_2000m_data.csv")
+# write.csv(test_fixed_data_2000, "final_test_fixed_data_2000.csv")
 ```
 
 #### Spliting the data

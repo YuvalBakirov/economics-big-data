@@ -286,13 +286,13 @@ plot_hourly_pickup_distribution <- function(data, title, color) {
 ```{r}
 # Plot for 1000-meter filtered data (lightblue color)
 plot_hourly_pickup_distribution(train_filtered_1000m_data, 
-                                "Filtered Uber Pickups by Hour (1000m Data, Expected: 18:00 to 00:00)", 
+                                "Filtered Uber Pickups by Hour (1000m Data, Expected: 18:00 to 23:45)", 
                                 "lightblue")
 ```
 ```{r}
 # Plot for 2000-meter filtered data (lightgreen color)
 plot_hourly_pickup_distribution(train_filtered_2000m_data, 
-                                "Filtered Uber Pickups by Hour (2000m Data, Expected: 18:00 to 00:00)", 
+                                "Filtered Uber Pickups by Hour (2000m Data, Expected: 18:00 to 23:45)", 
                                 "lightgreen")
 ```
 We are left with only rows with the desired time range!
@@ -967,7 +967,7 @@ We will also add:
 
 2. is_night: binary feature to identify if the time interval is in the evening or night to capture.
 
-3. split the time interval to: dayInWeek, dayInMonth, month, year, hour, minute
+3. Split the time interval to: dayInWeek, dayInMonth, month, year, hour, minute
 
 ##### is_weekend
 Add The is_weekend Feature:
@@ -1896,16 +1896,14 @@ create_corr_matrix(train_filtered_1000m_data, "1000m Data", numerical_features)
 Insights from the Correlation Matrix (1000m Data):
 1. High Correlation Between Features (Potential Multicollinearity):
 * temp and feels_like (0.99): This extremely high correlation indicates near redundancy. We’ll likely drop one of these, probably feels_like, to minimize multicollinearity.
-* clouds_all and humidity (0.61): Moderate correlation shows some overlap, but it may not be essential to address unless further analysis suggests otherwise.
 
 2. Correlation with number_of_pickups:
 * Positive Correlations:
-- taxis_pickup_count (0.31) and total_arrests (0.30): These show moderate positive correlations with Uber pickups, suggesting that higher demand for Uber may be linked to general transportation activity and arrest rates in the area.
+- taxis_pickup_count (0.4) and total_arrests (0.36): These show moderate positive correlations with Uber pickups, suggesting that higher demand for Uber may be linked to general transportation activity and arrest rates in the area.
 Negative Correlations:
-- is_night (-0.50) and is_weekend (-0.35): Pickup demand tends to drop significantly at night and during weekends, indicating that these times are associated with lower Uber activity.
 
 * Low Correlations:
-- wind_speed (-0.02) and number_of_persons_injured (0.03): These features have minimal impact on Uber demand, making them less valuable as predictors and potential candidates for exclusion.
+- wind_speed (-0.03) and number_of_persons_injured (0.01): These features have minimal impact on Uber demand, making them less valuable as predictors and potential candidates for exclusion.
 
 3. Handling Missing Values (NAs):
 * number_of_persons_killed contains missing values (NAs), which we’ll handle in a later preprocessing step.
@@ -1913,7 +1911,7 @@ Negative Correlations:
 
 4. Key Takeaways:
 * Multicollinearity: We’ll reduce redundancy by addressing high correlations, specifically between temp and feels_like.
-* Predictive Features: Variables like taxis_pickup_count and total_arrests appear to influence Uber demand, while night and weekend indicators are negatively associated with pickups.
+* Predictive Features: Variables like taxis_pickup_count and total_arrests appear to influence Uber demand.
 * Low Impact Features: Variables with low correlations to number_of_pickups, such as wind_speed and number_of_persons_injured, may be removed from the model due to minimal predictive value.
 
 5. Additional Notes:
@@ -1927,15 +1925,14 @@ create_corr_matrix(train_filtered_2000m_data, "2000m Data", numerical_features)
 Insights from the Correlation Matrix (2000m Data):
 1. High Correlation Between Features (Potential Multicollinearity):
 * temp and feels_like (0.99): This nearly perfect correlation suggests redundancy. We will likely drop feels_like to minimize multicollinearity.
-* clouds_all and humidity (0.61): Moderate correlation shows some overlap, but it is less critical and may not require immediate adjustment.
 
 2. Correlation with number_of_pickups:
 * Positive Correlations:
-- taxis_pickup_count (0.47) and total_arrests (0.17): These moderate correlations suggest that higher transportation demand (taxi activity) and arrest rates are associated with an increase in Uber pickups.
-- event_count (0.37) and number_of_crashes (0.37): Both events and traffic incidents appear linked to increased Uber demand, likely due to congestion or disrupted transportation options, encouraging people to choose Uber.
+- taxis_pickup_count (0.38) and total_arrests (0.28): These moderate correlations suggest that higher transportation demand (taxi activity) and arrest rates are associated with an increase in Uber pickups.
+- event_count (0.36) and number_of_crashes (0.26): Both events and traffic incidents appear linked to increased Uber demand, likely due to congestion or disrupted transportation options, encouraging people to choose Uber.
 
 * Low Correlations:
-- wind_speed (-0.03) and number_of_persons_killed (0.01): These features show very weak correlations with Uber pickups, indicating minimal impact on demand. They are likely not useful predictors for the model.
+- wind_speed (-0.08) and number_of_persons_killed (0.01): These features show very weak correlations with Uber pickups, indicating minimal impact on demand. They are likely not useful predictors for the model.
 
 3. Handling Missing Values (NAs):
 year is consistently NA due to having only one year (2014) in the dataset. We’ll remove it, as it does not contribute meaningful variability.
@@ -2018,7 +2015,7 @@ plot_persons_killed_distribution(train_filtered_2000m_data, "train_filtered_2000
 
 We can see that the "number_of_persons_killed" is very negligible in both tables. In the 1000 meter radius table, there are no persons killed at all from April to mid-September, therefore it is very likely that there will be no persons killed until the end of September.
 Negligible in the 2000 meter radius table.
-In addition, the correlation with the label "number_of_pickups" we calculated earlier for the 2000 table was also very negligible (0.014).
+In addition, the correlation with the label "number_of_pickups" we calculated earlier for the 2000 table was also very negligible (0.01).
 In conclusion, we will remove this feature.
 
 --------
@@ -2127,7 +2124,7 @@ numerical_features
 
 -------
 
-"In this section, we'll perform a multicollinearity check among the numerical features. If any features are highly correlated, we may remove one to prevent redundancy. We'll use the Variance Inflation Factor (VIF) to identify potential multicollinearity issues."
+In this section, we'll perform a multicollinearity check among the numerical features. If any features are highly correlated, we may remove one to prevent redundancy. We'll use the Variance Inflation Factor (VIF) to identify potential multicollinearity issues.
 
 ```{r}
 # Define a function to fit the linear model and calculate VIF for numerical features only
@@ -2182,15 +2179,15 @@ features_to_remove <- append(features_to_remove, "temp")
 
 Removing wind_speed, clouds_all and humidity:
 1. wind_speed:
-* The correlation between wind_speed and number_of_pickups is very low: -0.02 (1000m) and -0.03 (2000m).
+* The correlation between wind_speed and number_of_pickups is very low.
 * In an urban environment like New York City, wind speed has minimal impact on transportation behavior. The city's infrastructure, such as sheltered streets and extensive public transit, reduces the influence of everyday wind fluctuations on Uber demand.
 
 2. clouds_all:
-* The correlation between clouds_all and number_of_pickups is weak: 0.14 in both datasets.
+* The correlation between clouds_all and number_of_pickups is weak.
 * Cloudiness doesn't significantly impact transportation behavior. Unlike rain or snow, cloud cover alone isn't disruptive enough to influence Uber demand in New York City, making it less relevant for predictive modeling.
 
 3. humidity:
-* The correlation between humidity and number_of_pickups is weak: 0.12 (1000m) and 0.11 (2000m).
+* The correlation between humidity and number_of_pickups is weak.
 * Humidity is also a variable that is not expected to directly affect the number of pickups, as there are other, more impactful temperature-related features We prefer to retain. 
 
 Lets run the function to remove those features:
@@ -2236,19 +2233,59 @@ summary(train_filtered_1000m_data)
 # Basic summary statistics - 2000m
 summary(train_filtered_2000m_data)
 ```
-Key Observations from the 1000m Dataset:
-1. Number of Pickups: The median number of pickups is 37, with a maximum of 190. The distribution shows that pickups vary widely in the 1000m radius.
-2. Weather: Humidity has a median of 49, and feels_like is around 23.85. Rain is infrequent (mean is 0.16), suggesting rain likely doesn't have a strong influence on demand.
-3. Crashes and Injuries: Crashes and injuries are rare in the 1000m area (median values are 0), indicating that incidents might not have a significant effect on Uber demand in this radius.
-4. Holidays: Memorial Day, Independence Day, and Labor Day are rare occurrences (mean close to 0), so their effect on demand could be limited.
-5. Taxi Pickups and Arrests: Taxi pickups have a median of 641, and total arrests have a median of 34, which indicates moderate activity in both taxi services and law enforcement within the 1000m radius.
+* Key Observations from the 1000m Dataset:
+1. Uber Pickup Counts:
+The number of pickups ranges from 0 to a maximum of 190, with a mean of 44.3 pickups per interval. This suggests a wide variation in demand within the 1000m radius.
 
-Key Observations from the 2000m Dataset:
-1. Number of Pickups: The median number of pickups is 204, with a maximum of 521, showing a larger volume of activity in this area.
-2. Weather: Humidity has a median of 49, and feels_like is around 23.82. Rain is similarly infrequent (mean of 0.16), likely not a major factor for Uber demand.
-3. Crashes and Injuries: There is a higher occurrence of crashes and injuries (median values: 4 crashes, 1 injury), reflecting more frequent incidents in the larger radius.
-4. Holidays: Holidays are rare (mean close to 0), and further analysis would be needed to assess their impact on Uber demand.
-5. Taxi Pickups and Arrests: Taxi pickups have a median of 641, and total arrests have a median of 985, indicating substantial taxi and law enforcement activity within the 2000m radius.
+2. Time Intervals:
+Data covers the period from April 1, 2014, to September 9, 2014, with intervals between 18:00 and 23:45.
+The distribution across hour and minute is quite broad, supporting detailed time-based analysis.
+
+3. Feels Like Temperature:
+The "feels like" temperature ranges from 0.53°C to 37.03°C, with a mean of 22.4°C. This dataset largely represents the warmer months, impacting people's likelihood of venturing out and taking Uber.
+
+4. Rain Events:
+is_raining_last_hour is mostly 0 (no rain) with a mean of 0.135, indicating that rain events are relatively infrequent in this dataset.
+
+5. Crash and Injury Data:
+number_of_persons_injured and number_of_crashes show low counts, with a maximum of 5 injuries and 3 crashes, indicating that serious incidents are rare but included in the data.
+
+6. External Events and Holidays:
+The dataset includes binary indicators for major holidays: memorial_day, independence_day, and labor_day, each occurring infrequently (mean values close to 0). This allows for examining holiday impacts on Uber demand.
+
+7. Other Features:
+event_count, taxis_pickup_count, and total_arrests provide additional context, with a moderate mean number of events and taxi pickups (43.2 and 667.6, respectively) per interval. These features likely capture the general demand level in the area.
+
+In summary, this dataset captures a detailed view of Uber demand in a small radius around the Empire State Building, with additional weather, event, and holiday variables that can help analyze the drivers of Uber demand in this busy urban area. The presence of both time-based variables (hour, minute) and contextual indicators (temperature, rain, events) supports a comprehensive analysis of demand patterns.
+
+
+* Key Observations from the 2000m Dataset:
+1. Uber Pickup Counts:
+The number of pickups ranges from 0 to a maximum of 519, with a mean of 210.6 pickups per interval. This suggests higher demand overall compared to the 1000m dataset, reflecting a broader catchment area.
+
+2. Time Intervals:
+The dataset spans from April 1, 2014, to September 9, 2014, with intervals between 18:00 and 23:45, similar to the 1000m data. This allows for detailed analysis of evening and night-time Uber demand patterns.
+
+3. Feels Like Temperature:
+The "feels like" temperature ranges from 0.53°C to 37.03°C, with a mean of 22.4°C, covering the warmer months. This range has a likely impact on people’s decision to use Uber, especially in moderate temperatures.
+
+4. Rain Events:
+is_raining_last_hour is mostly 0 (no rain) with a mean of 0.135, indicating infrequent rain events in this data, similar to the 1000m dataset.
+
+5. Crash and Injury Data:
+number_of_persons_injured and number_of_crashes show higher counts compared to the 1000m data, with a mean of 1.485 injured persons and 4.669 crashes per interval. The maximum values are also notably higher (up to 20 injuries and 18 crashes), suggesting that more incidents are captured in the larger radius.
+
+6. External Events and Holidays:
+The binary indicators for major holidays (memorial_day, independence_day, labor_day) appear infrequently, as expected (mean values close to 0). This provides the opportunity to analyze holiday impacts on demand.
+
+7. Other Features:
+event_count, taxis_pickup_count, and total_arrests are higher in this dataset, with total arrests having a mean of 945.9 and a maximum of 1314. This indicates a higher level of activity in this radius, likely capturing various urban events and public activities.
+
+8. Comparison with 1000m Dataset:
+Compared to the 1000m radius, the 2000m dataset has significantly higher average and maximum pickup counts, suggesting a wider variety of trip purposes beyond commuting. The larger area includes more diverse locations that likely sustain demand into the later hours, reflecting nightlife, dining, and other activities beyond commuting.
+
+In summary, the 2000m dataset captures a broader view of Uber demand around the Empire State Building. The increased pickup counts, higher event and arrest counts, and greater variation in crash and injury data suggest that this dataset includes a more complex mix of urban factors influencing Uber demand. This range of variables allows for analysis of how these factors collectively impact ride-hailing in a busy metropolitan environment.
+
 
 ##### Label & Features Analysis
 
@@ -2273,7 +2310,7 @@ plot_pickup_distribution(train_filtered_1000m_data, "train_filtered_1000m_data",
 Observations from the 1000m Data:
 * The distribution of the number of pickups is right-skewed, with the majority of data points concentrated between 0 and 100 pickups.
 * A large number of instances have fewer than 50 pickups, indicating that within the 1000m radius of the Empire State Building, lower pickup counts are more frequent.
-* There are fewer instances with a high number of pickups (100+), suggesting that higher demand events or locations are less frequent within this smaller radius.
+* There are fewer instances with a high number of pickups (120+), suggesting that higher demand events or locations are less frequent within this smaller radius.
 
 ```{r}
 # Call the function for train_filtered_2000m_data
@@ -3390,7 +3427,7 @@ plot_uber_demand_for_time_interval(train_filtered_2000m_data, "2000m Data", "19:
 ```
 
 
-We saw earlier that the peak hours for Data 1000 is 17:45 and for Data 2000 it is 18:00 (hours will the biggest amount of uber pickups overall).
+We saw earlier that the peak hours for both of that dfs: Data 1000 & Data 2000 is 18:00 (hour with the biggest amount of uber pickups overall).
 During rush hour (18:00 for 1000m & 2000m dfs), people tend to take Uber regardless of whether it is raining or not. This is likely due to the necessity of commuting at those times. However, we see similar trends in pickups, where rain does not seem to significantly alter the demand pattern. This is expected during rush hours when people prioritize getting home or to work, rain or shine.
 
 To better understand the effect of rain, we should consider looking at other time intervals where Uber demand is not the highest. By choosing a time that is not during rush hour but also not too late, we can see whether rain significantly influences Uber pickups when commuters have more flexibility in their transportation choices.

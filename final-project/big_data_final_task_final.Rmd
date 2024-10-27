@@ -2065,6 +2065,12 @@ train_filtered_2000m_data
 ```
 
 ```{r}
+test_fixed_data <- remove_features(test_fixed_data, features_to_remove)
+test_fixed_data
+```
+
+
+```{r}
 categorical_features
 ```
 ```{r}
@@ -2132,6 +2138,12 @@ train_filtered_2000m_data
 ```
 
 ```{r}
+test_fixed_data <- remove_features(test_fixed_data, features_to_remove)
+test_fixed_data
+```
+
+
+```{r}
 categorical_features
 ```
 
@@ -2167,6 +2179,11 @@ train_filtered_1000m_data
 ```{r}
 train_filtered_2000m_data <- remove_features(train_filtered_2000m_data, features_to_remove)
 train_filtered_2000m_data
+```
+
+```{r}
+test_fixed_data <- remove_features(test_fixed_data, features_to_remove)
+test_fixed_data
 ```
 
 ```{r}
@@ -3810,15 +3827,27 @@ categorical_features_1000 <- categorical_features
 numerical_features_1000 <- numerical_features
 ```
 
+Conclusions implemented on the 1000m train + test:
 ```{r}
-# Update with is_holiday feature
-train_filtered_1000m_data <- create_is_holiday_feature(train_filtered_1000m_data)
+# Function to update train_filtered_1000m_data with specified transformations
+update_data_1000m <- function(df) {
+  
+  # Add is_holiday feature and remove original holiday columns
+  df <- create_is_holiday_feature(df)
+  
+  # Add is_persons_injured feature and remove original injury column
+  df <- create_is_persons_injured_feature(df)
+  
+  # Remove the total_events feature
+  df <- remove_total_events_1000m(df)
+  
+  return(df)  # Return the updated dataframe
+}
+```
 
-# Update with is_persons_injured feature
-train_filtered_1000m_data <- create_is_persons_injured_feature(train_filtered_1000m_data)
-
-# Remove total_events
-train_filtered_1000m_data <- remove_total_events_1000m(train_filtered_1000m_data)
+```{r}
+train_filtered_1000m_data <- update_data_1000m(train_filtered_1000m_data)
+test_fixed_data_1000 <- update_data_1000m(test_fixed_data)
 ```
 
 ```{r}
@@ -3846,6 +3875,10 @@ numerical_features_1000
 train_filtered_1000m_data
 ```
 
+```{r}
+test_fixed_data_1000
+```
+
 
 For 2000:
 ```{r}
@@ -3853,12 +3886,24 @@ categorical_features_2000 <- categorical_features
 numerical_features_2000 <- numerical_features
 ```
 
+Conclusions implemented on the 1000m train + test:
 ```{r}
-# Update with is_holiday feature
-train_filtered_2000m_data <- create_is_holiday_feature(train_filtered_2000m_data)
+# Function to update train_filtered_2000m_data with specified transformations
+update_data_2000m <- function(df) {
+  
+  # Add is_holiday feature and remove original holiday columns
+  df <- create_is_holiday_feature(df)
+  
+  # Add is_persons_injured feature and remove original injury column
+  df <- create_is_persons_injured_feature(df)
+  
+  return(df)  # Return the updated dataframe
+}
+```
 
-# Update with is_persons_injured feature
-train_filtered_2000m_data <- create_is_persons_injured_feature(train_filtered_2000m_data)
+```{r}
+train_filtered_2000m_data <- update_data_2000m(train_filtered_2000m_data)
+test_fixed_data_2000 <- update_data_2000m(test_fixed_data)
 ```
 
 ```{r}
@@ -3884,6 +3929,18 @@ numerical_features_2000
 train_filtered_2000m_data
 ```
 
+```{r}
+test_fixed_data_2000
+```
+
+Lets save to CSVs:
+```{r}
+write.csv(train_filtered_1000m_data, "final_train_filtered_1000m_data.csv")
+write.csv(test_fixed_data_1000, "final_test_fixed_data_1000.csv")
+
+write.csv(train_filtered_2000m_data, "final_train_filtered_2000m_data.csv")
+write.csv(test_fixed_data_2000, "final_test_fixed_data_2000.csv")
+```
 
 #### Spliting the data
 By splitting the data into training and validation sets, we can train our model on the training set and assess its performance on the validation set. This helps us understand how well our model is likely to perform on new, unseen data. Additionally, inorder to avoid data leaking, and understanding that onehotencoder is based on fitting and transforming, from now on will work with test_train split.
@@ -3907,7 +3964,8 @@ range(train_filtered_2000m_data$time_interval)
 
 ### Model 1 - Full Data
 Final Data for Modeling:
-Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final training dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
+Since the test data doesn't provide exact pickup coordinates (latitude and longitude), but all pickups are known to occur within a 1000-meter radius from the Empire State Building, it's essential to ensure that the final training dataset only includes pickups within this same 1000-meter radius. Therefore, we must filter the training data accordingly. Additionally, because the test data lacks latitude, longitude, and distance features, it's important to remove these features from the final train
+ing dataset before modeling. This step ensures consistency between the training and test datasets, enabling the model to make accurate predictions.
 
 ```{r model_1_full_data}
 ```
@@ -3925,3 +3983,7 @@ Since the test data doesn't include specific locations (latitude, longitude), an
 ## Conclusions
 ```{r conclusion}
 ```
+```{r}
+
+```
+

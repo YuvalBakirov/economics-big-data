@@ -1,0 +1,416 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Load necessary libraries
+```{r necessary_libraries}
+library(tidyr)
+library(dplyr)
+library(geosphere) 
+library(leaflet)
+library(ggplot2)
+library(lubridate)
+library(readr)
+library(stringr)
+library(corrplot)
+library(car)
+library(gridExtra) #install.packages("gridExtra")
+library(grid)
+
+library(data.table)
+library(zoo)
+
+library(randomForest)
+
+library(Matrix)
+library(xgboost)
+
+library(catboost)
+
+library(forecast)
+```
+
+# Load the data
+```{r}
+final_train_1000m_data <- read.csv("final_train_1000m_ariel_data.csv")
+final_train_2000Am_data <- read.csv("final_train_2000Am_ariel_data.csv")
+test_fixed_data <- read.csv("test_fixed_data.csv")
+```
+
+```{r}
+final_train_1000m_data$X <- NULL 
+final_train_2000Am_data$X <- NULL 
+test_fixed_data$X <- NULL 
+final_train_1000m_data
+```
+
+```{r}
+# Convert data frames to data.tables
+final_train_1000m_data <- as.data.table(final_train_1000m_data)
+final_train_2000Am_data <- as.data.table(final_train_2000Am_data)
+test_fixed_data <- as.data.table(test_fixed_data)
+```
+
+
+```{r}
+final_train_1000m_data
+final_train_2000Am_data
+test_fixed_data
+```
+
+```{r}
+# Define the conversion function
+convert_data_types <- function(data, time_col, cols_to_double = NULL, cols_to_int = NULL, date_format = "%d/%m/%Y %H:%M") {
+  # Ensure the data is a data.table
+  setDT(data)
+  
+  # Convert the specified time column to POSIXct (S3 class)
+  if (!is.null(time_col)) {
+    data[[time_col]] <- as.POSIXct(data[[time_col]])
+  }
+  
+  # Convert specified columns to double
+  if (!is.null(cols_to_double)) {
+    data[, (cols_to_double) := lapply(.SD, as.numeric), .SDcols = cols_to_double]
+  }
+  
+  # Convert specified columns to integer
+  if (!is.null(cols_to_int)) {
+    data[, (cols_to_int) := lapply(.SD, as.integer), .SDcols = cols_to_int]
+  }
+  
+  # Return the modified data
+  return(data)
+}
+```
+
+```{r}
+time_col = "time_interval"
+cols_to_double = c("feels_like")
+cols_to_int = c("number_of_pickups", "is_weekend", "is_night", "is_raining_last_hour", "number_of_crashes", "taxis_pickup_count", 
+                  "total_arrests", "is_holiday", "is_persons_injured")
+```
+
+```{r}
+
+final_train_1000m_data <- convert_data_types(
+  data = final_train_1000m_data,
+  time_col = time_col,
+  cols_to_double = cols_to_double,
+  cols_to_int = cols_to_int
+)
+
+# final_train_2000Am_data <- convert_data_types(
+#   data = final_train_2000Am_data,
+#   time_col = "time_interval",
+#   cols_to_double = c("temp", "wind_speed", "feels_like"),
+#   cols_to_int = c("is_weekend", "is_night", "humidity", "number_of_persons_injured", 
+#                   "number_of_crashes", "event_count", "taxis_pickup_count", 
+#                   "total_arrests", "memorial_day", "independence_day", "labor_day")
+# )
+# 
+# test_fixed_data <- convert_data_types(
+#   data = test_fixed_data,
+#   time_col = "time_interval",
+#   cols_to_double = c("temp", "wind_speed", "feels_like"),
+#   cols_to_int = c("is_weekend", "is_night", "humidity", "number_of_persons_injured", 
+#                   "number_of_crashes", "event_count", "taxis_pickup_count", 
+#                   "total_arrests", "memorial_day", "independence_day", "labor_day")
+# )
+
+```
+
+
+
+```{r}
+final_train_1000m_data
+final_train_2000Am_data
+test_fixed_data
+```
+
+
+```{r}
+final_train_1000m_data_copy <- copy(as.data.table(final_train_1000m_data))
+final_train_2000Am_data_copy <- copy(as.data.table(final_train_2000Am_data))
+test_fixed_data_copy <- copy(as.data.table(test_fixed_data))
+```
+
+
+# Preprocessing
+
+### Add time features
+```{r}
+process_time_features <- function(data, time_col) {
+  # Convert 'time_interval' to POSIXct datetime format
+  data[[time_col]] <- as.POSIXct(data[[time_col]], format = "%d/%m/%Y %H:%M")
+  
+  # Extract the hour of the day
+  data$hour_of_day <- as.numeric(format(data[[time_col]], "%H"))
+  
+  # Extract the day of the week (0 = Sunday, 6 = Saturday)
+  data$day_of_week <- as.numeric(format(data[[time_col]], "%w"))
+  
+  return(data)
+}
+```
+
+
+## Preprocessing Function
+
+```{r}
+final_preprocess_data <- function(train_data, test_data, time_col,
+                                   hour_col,
+                                   numerical_features) {
+
+  
+  # Step 1: Convert the data to data.table
+  if (!is.data.table(train_data)) {
+    train_data <- as.data.table(train_data)
+  }
+  
+  if (!is.data.table(test_data)) {
+    test_data <- as.data.table(test_data)
+  }
+  
+  # Step 2: Check if the time_col exists in the dataset
+  if (!(time_col %in% names(train_data))) {
+    stop(paste("The time column", time_col, "does not exist in the dataset."))
+  }
+  
+  if (!(time_col %in% names(test_data))) {
+    stop(paste("The time column", time_col, "does not exist in the dataset."))
+  }
+  
+  # Step 3: Process time features
+  # Same for Train and Test sets
+  train_data <- process_time_features(train_data, time_col)
+  test_data <- process_time_features(test_data, time_col)
+  
+
+  # Step 7: Check again that the data is still a data.table before removing the column
+  if (!is.data.table(train_data)) {
+    train_data <- as.data.table(train_data)
+  }
+  
+  if (!is.data.table(test_data)) {
+    test_data <- as.data.table(test_data)
+  }
+  
+  
+  # Step 8: Remove the time interval column using data.table syntax
+  if (time_col %in% names(train_data)) {
+    train_data[, (time_col) := NULL]
+  }
+  
+  if (time_col %in% names(test_data)) {
+    test_data[, (time_col) := NULL]
+  }
+  
+  train_data <- train_data[number_of_pickups != 0]
+  test_data <- test_data[number_of_pickups != 0]
+  
+  return(list(
+  train_data = train_data,
+  test_data = test_data
+  ))
+}
+
+```
+
+
+### Splitting the data
+
+```{r}
+# Function to split the data into training and validation sets
+split_data <- function(data, train_ratio = 0.8) {
+  
+  # Calculate the number of rows for the training set
+  train_size <- floor(train_ratio * nrow(data))
+  
+  # Split the data into training and validation sets
+  train_data <- data[1:train_size, ]
+  validation_data <- data[(train_size + 1):nrow(data), ]
+  
+  # Return a list with both train and validation sets
+  return(list(train = train_data, validation = validation_data))
+}
+```
+
+
+```{r}
+final_train_1000m_data <- copy(as.data.table(final_train_1000m_data_copy))
+final_train_2000Am_data <- copy(as.data.table(final_train_2000Am_data_copy))
+test_fixed_data <- copy(as.data.table(test_fixed_data_copy))
+```
+
+
+```{r}
+final_train_1000m_data
+```
+
+
+```{r}
+# Example of how to use the function with your final_df data
+data_splits <- split_data(final_train_1000m_data, train_ratio = 0.8)
+
+# Access the train and validation sets
+train_data <- data_splits$train
+validation_data <- data_splits$validation
+
+# View the number of rows in each split to confirm
+nrow(train_data)
+nrow(validation_data)
+```
+
+
+```{r}
+  # Define the numerical columns
+  numerical_features <- c("feels_like", "taxis_pickup_count", "total_arrests")
+
+  # Example usage with your dataset:
+  final_dfs <- final_preprocess_data(
+    train_data = train_data,
+    test_data = validation_data,
+    time_col = "time_interval",
+    hour_col = "hour_of_day",
+    numerical_features = numerical_features
+  )
+```
+
+
+```{r}
+final_train <- final_dfs$train_data
+final_validation <- final_dfs$test_data
+
+final_train
+final_validation
+```
+
+```{r}
+
+```
+
+## Linear Regression
+#### Running the model
+```{r}
+# Step 1: Fit the Linear Regression Model
+model <- lm(number_of_pickups ~ ., data = final_train)
+
+# Step 2: Summary of the model to see coefficients and significance levels
+summary(model)
+```
+#### Prediction
+```{r}
+# Step 3: Make predictions on the validation set
+final_validation$predicted_pickups <- predict(model, newdata = final_validation)
+
+# Step 4: View the predictions
+final_validation[, c("number_of_pickups", "predicted_pickups")]
+
+```
+
+#### Evaluation
+```{r}
+# Step 5: Calculate Mean Squared Error (MSE)
+mse <- mean((final_validation$number_of_pickups - final_validation$predicted_pickups)^2)
+print(paste("Mean Squared Error:", mse))
+```
+
+
+```{r}
+# Step 1: Make predictions on the training set
+final_train$predicted_pickups <- predict(model, newdata = final_train)
+
+# Step 2: Calculate MSE for the training set
+train_mse <- mean((final_train$number_of_pickups - final_train$predicted_pickups)^2)
+print(paste("Training Mean Squared Error:", round(train_mse, 2)))
+```
+
+## Random Forest
+
+```{r}
+  # Define the numerical columns
+  numerical_features <- c("feels_like", "taxis_pickup_count", "total_arrests")
+
+  # Example usage with your dataset:
+  final_dfs <- final_preprocess_data(
+    train_data = train_data,
+    test_data = validation_data,
+    time_col = "time_interval",
+    hour_col = "hour_of_day",
+    numerical_features = numerical_features
+  )
+```
+
+
+```{r}
+final_train <- final_dfs$train_data
+final_validation <- final_dfs$test_data
+
+final_train
+final_validation
+```
+
+
+#### Running the model
+```{r}
+library(randomForest)
+
+# Target variable
+target <- "number_of_pickups"
+
+# Features (excluding target)
+features <- setdiff(names(final_train), target)
+
+# Prepare formula
+rf_formula <- as.formula(paste(target, "~ ."))
+
+# Fit a random forest model
+rf_model <- randomForest(
+  formula = rf_formula,
+  data = final_train,
+  ntree = 500,
+  importance = TRUE
+)
+print(rf_model)
+```
+
+
+```{r}
+# Step 3: Make predictions on the validation set
+final_validation$predicted_pickups <- predict(rf_model, newdata = final_validation)
+
+# Step 4: View the predictions
+final_validation[, c("number_of_pickups", "predicted_pickups")]
+
+```
+
+#### Evaluation
+```{r}
+# Step 5: Calculate Mean Squared Error (MSE)
+mse <- mean((final_validation$number_of_pickups - final_validation$predicted_pickups)^2)
+print(paste("Mean Squared Error:", mse))
+```
+
+```{r}
+# Step 1: Make predictions on the training set
+final_train$predicted_pickups <- predict(rf_model, newdata = final_train)
+
+# Step 2: Calculate MSE for the training set
+train_mse <- mean((final_train$number_of_pickups - final_train$predicted_pickups)^2)
+print(paste("Training Mean Squared Error:", round(train_mse, 2)))
+```
+```{r}
+# Extract feature importance scores
+importance_scores <- importance(rf_model)
+
+# Convert to a data frame for easier viewing
+importance_df <- data.frame(Feature = rownames(importance_scores), Importance = importance_scores[, 1])
+
+# Sort the importance scores in descending order for better readability
+importance_df <- importance_df[order(-importance_df$Importance), ]
+
+# Print the sorted importance scores
+print(importance_df)
+```

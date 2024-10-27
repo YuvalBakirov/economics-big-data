@@ -192,7 +192,7 @@ train_filtered_2000m_data <- train_2000m_data %>%
   mutate(timestamp = as.POSIXct(timestamp, format="%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
 ```
 
-Visualize the distribution of Uber pickups by hour to check if there are any outside 17:00-00:00:
+Visualize the distribution of Uber pickups by hour to check if there are any outside 18:00-23:45:
 ```{r}
 plot_pickup_distribution <- function(data, title, color) {
   ggplot(data, aes(x = hour(timestamp))) +
@@ -216,11 +216,11 @@ plot_pickup_distribution(train_filtered_1000m_data, "Distribution of Uber Pickup
 # For 2000-meter filtered data
 plot_pickup_distribution(train_filtered_2000m_data, "Distribution of Uber Pickups by Hour (2000m Data)", "lightgreen")
 ```
-As seen in the two graphs, there are significant amounts of data outside the desired range of 17:00 to 00:00 for both datasets (1000m and 2000m data). Therefore, to focus on the data for pickups that occurred between 17:00 and 00:00, we will apply a filter to exclude the hours outside this range.
+As seen in the two graphs, there are significant amounts of data outside the desired range of 18:00 to 23:45 for both datasets (1000m and 2000m data). Therefore, to focus on the data for pickups that occurred between 18:00 and 23:45, we will apply a filter to exclude the hours outside this range.
 
-Filter data to include only pickups between 17:00 and 00:00:
+Filter data to include only pickups between 18:00 and 23:45:
 ```{r}
-# Function to filter data between specified date-time range and specific hours (17:00 to 00:00)
+# Function to filter data between specified date-time range and specific hours (18:00 to 23:45)
 filter_time_interval <- function(data, timestamp_column, start_datetime, end_datetime) {
   
   # Convert the timestamp column to a proper datetime format if needed
@@ -231,8 +231,7 @@ filter_time_interval <- function(data, timestamp_column, start_datetime, end_dat
     filter(
       !!sym(timestamp_column) >= as.POSIXct(start_datetime, tz = "UTC") &
       !!sym(timestamp_column) <= as.POSIXct(end_datetime, tz = "UTC") &
-      (hour(!!sym(timestamp_column)) >= 17 & hour(!!sym(timestamp_column)) <= 23 | 
-      (hour(!!sym(timestamp_column)) == 0 & minute(!!sym(timestamp_column)) == 0 & second(!!sym(timestamp_column)) == 0))
+      (hour(!!sym(timestamp_column)) >= 18 & hour(!!sym(timestamp_column)) <= 23)
     )
   
   return(filtered_data)
@@ -245,7 +244,7 @@ filter_time_interval <- function(data, timestamp_column, start_datetime, end_dat
 train_filtered_1000m_data <- filter_time_interval(
   data = train_filtered_1000m_data,
   timestamp_column = "timestamp",
-  start_datetime = "2014-04-01 17:00:00",
+  start_datetime = "2014-04-01 18:00:00",
   end_datetime = "2014-09-09 00:00:00"
 )
 
@@ -253,7 +252,7 @@ train_filtered_1000m_data <- filter_time_interval(
 train_filtered_2000m_data <- filter_time_interval(
   data = train_filtered_2000m_data,
   timestamp_column = "timestamp",
-  start_datetime = "2014-04-01 17:00:00",
+  start_datetime = "2014-04-01 18:00:00",
   end_datetime = "2014-09-09 00:00:00"
 )
 ```
@@ -287,13 +286,13 @@ plot_hourly_pickup_distribution <- function(data, title, color) {
 ```{r}
 # Plot for 1000-meter filtered data (lightblue color)
 plot_hourly_pickup_distribution(train_filtered_1000m_data, 
-                                "Filtered Uber Pickups by Hour (1000m Data, Expected: 17:00 to 00:00)", 
+                                "Filtered Uber Pickups by Hour (1000m Data, Expected: 18:00 to 00:00)", 
                                 "lightblue")
 ```
 ```{r}
 # Plot for 2000-meter filtered data (lightgreen color)
 plot_hourly_pickup_distribution(train_filtered_2000m_data, 
-                                "Filtered Uber Pickups by Hour (2000m Data, Expected: 17:00 to 00:00)", 
+                                "Filtered Uber Pickups by Hour (2000m Data, Expected: 18:00 to 00:00)", 
                                 "lightgreen")
 ```
 We are left with only rows with the desired time range!
@@ -385,21 +384,21 @@ plot_top_10_pickup_intervals <- function(data, title, color) {
 # Plot for 1000-meter filtered data (lightblue color)
 plot_top_10_pickup_intervals(pickup_counts_1000m, "Top 10 Pickup Intervals (1000m Radius)", "lightblue")
 ```
-1000-meter Radius:
+Based on the plot for the 1000-meter radius:
 
-* The pickup counts in the top 10 intervals are around 150-175 pickups per interval.
-* The busiest intervals span across different dates, showing a peak around July 15, 2014, with pickups happening consistently between 17:45 and 18:30 on several days.
-* This indicates that Uber demand was high around these specific dates and times near the Empire State Building within a 1000-meter radius.
+* The pickup counts in the top 10 intervals vary between approximately 140 and 160 pickups per interval.
+* The busiest intervals are spread across various dates, with a noticeable peak on July 15, 2014. The majority of these intervals are clustered around evening hours, specifically from 18:00 to 19:45.
+* This suggests a consistent high demand for Uber rides near the Empire State Building within a 1000-meter radius during these dates and times, particularly in the evening hours.
 
 ```{r}
 # Plot for 2000-meter filtered data (lightgreen color)
 plot_top_10_pickup_intervals(pickup_counts_2000m, "Top 10 Pickup Intervals (2000m Radius)", "lightgreen")
 ```
-2000-meter Radius:
+Based on the plot for the 2000-meter radius:
 
-* The pickup counts in the top 10 intervals are significantly higher, around 500 pickups per interval.
-* The busiest intervals are mostly concentrated on September 6, 2014, with intervals spanning between 17:15 and 23:30.
-* This shows that the Uber demand beyond a 2000-meter radius from the Empire State Building was much higher on that specific date, indicating a spike in activity.
+* The pickup counts in the top 10 intervals are around 475-500 pickups per interval.
+* The busiest intervals are mostly concentrated on September 6, 2014, with pickup times spanning consistently between 19:00 and 23:00. There are also busy intervals on other dates, including August 13 and September 5.
+* This suggests a significant spike in Uber demand within the 2000-meter radius around the Empire State Building, particularly during the evening hours on these specific dates.
 
 ### Data Cleaning
 
@@ -860,19 +859,18 @@ Now, we would like to see if there are missing time intervals:
 find_missing_time_intervals <- function(data) {
   
   # Define the start and end time for the sequence
-  start_time <- as.POSIXct("2014-04-01 17:00:00", tz = "UTC")
+  start_time <- as.POSIXct("2014-04-01 18:00:00", tz = "UTC")
   end_time <- as.POSIXct("2014-09-09 23:45:00", tz = "UTC")
   
   # Generate the full sequence of expected 15-minute intervals
   expected_time_sequence <- seq(from = start_time, to = end_time, by = "15 min")
   
-  # Filter the time sequence for intervals between 17:00 and 00:00 only
+  # Filter the time sequence for intervals between 18:00 and 00:00 only
   expected_time_sequence <- expected_time_sequence[
-    (format(expected_time_sequence, "%H") >= "17" & format(expected_time_sequence, "%H") <= "23") |
-    (format(expected_time_sequence, "%H") == "00" & format(expected_time_sequence, "%M") == "00" & format(expected_time_sequence, "%Y-%m-%d") != "2014-04-01")
+    format(expected_time_sequence, "%H:%M") >= "18:00" & format(expected_time_sequence, "%H:%M") <= "23:45"
   ]
   
-  # Extract unique time intervals from the actual data
+# Extract unique time intervals from the actual data
   actual_intervals <- data %>%
     mutate(Unique_Interval = format(!!sym("time_interval"), "%Y-%m-%d %H:%M:%S")) %>%
     distinct(Unique_Interval)
@@ -1004,10 +1002,10 @@ test_fixed_data
 ##### is_night
 Add The time_of_day Feature:
 
-Note: In this case, since our data contains times only between 17:00 and 00:00, we will adapt the time_of_day feature to reflect only the relevant periods: Evening (17:00-20:30) and Night (20:31-00:00). There will be no Afternoon or Morning periods as the data doesn't cover these hours.
+Note: In this case, since our data contains times only between 18:00 and 23:45, we will adapt the time_of_day feature to reflect only the relevant periods: Evening (18:00-20:30) and Night (20:31-23:45). There will be no Afternoon or Morning periods as the data doesn't cover these hours.
 
 Function to add 'is_night' as a binary feature (0 for Evening, 1 for Night). This feature assigns a binary value based on the time of day. 
-In our case, Evening (17:00 - 20:30) is represented by 0, and Night (20:31 - 00:00) is represented by 1. 
+In our case, Evening (18:00 - 20:30) is represented by 0, and Night (20:31 - 23:45) is represented by 1. 
 
 ```{r}
 # Function to add 'is_night' as a binary feature (0 for Evening, 1 for Night)
@@ -1015,12 +1013,12 @@ add_is_night  <- function(data) {
   data %>%
     mutate(
       is_night = case_when(
-        # Evening: 17:00 - 20:30
-        hour(time_interval) == 17 ~ 0,                              
-        hour(time_interval) > 17 & hour(time_interval) < 20 ~ 0,        
+        # Evening: 18:00 - 20:30
+        hour(time_interval) == 18 ~ 0,                              
+        hour(time_interval) > 18 & hour(time_interval) < 20 ~ 0,        
         hour(time_interval) == 20 & minute(time_interval) <= 30 ~ 0, 
         
-        # Night: 20:31 - 00:00
+        # Night: 20:31 - 00:00 (not including)
         (hour(time_interval) == 20 & minute(time_interval) > 30) |      
         (hour(time_interval) > 20 & hour(time_interval) <= 23) ~ 1,
         hour(time_interval) == 0 ~ 1
@@ -1084,8 +1082,6 @@ train_filtered_2000m_data
 test_fixed_data <- split_time_interval(test_fixed_data)
 test_fixed_data
 ```
-
-
 
 #### Data from the Web: External Data Integration
 
@@ -1899,24 +1895,29 @@ create_corr_matrix(train_filtered_1000m_data, "1000m Data", numerical_features)
 
 Insights from the Correlation Matrix (1000m Data):
 1. High Correlation Between Features (Potential Multicollinearity):
-* temp and Feels_like (0.99): This strong correlation suggests redundancy. We will consider dropping one, likely feels_like, to reduce multicollinearity.
-* Clouds_all and Humidity (0.61): There's moderate correlation, indicating overlap in information. This may require further investigation but isn't critical.
+* temp and feels_like (0.99): This extremely high correlation indicates near redundancy. We’ll likely drop one of these, probably feels_like, to minimize multicollinearity.
+* clouds_all and humidity (0.61): Moderate correlation shows some overlap, but it may not be essential to address unless further analysis suggests otherwise.
 
 2. Correlation with number_of_pickups:
-* Positive Correlation:
-- Taxis_pickup_count (0.31) and Total_arrests (0.30) both show moderate positive correlations with Uber pickups, suggesting a link between higher transportation demand and arrest activity.
-* Negative Correlation:
-- Is_night (-0.50) and Is_weekend (-0.35) show significant drops in pickups during these times, signaling lower demand at night and on weekends.
-* Low Correlation:
-- Wind_speed (-0.02) and Number_of_persons_injured (0.03) have very low correlations with pickups, suggesting that these features have little impact on Uber demand. These may not be useful predictors in the model.
+* Positive Correlations:
+- taxis_pickup_count (0.31) and total_arrests (0.30): These show moderate positive correlations with Uber pickups, suggesting that higher demand for Uber may be linked to general transportation activity and arrest rates in the area.
+Negative Correlations:
+- is_night (-0.50) and is_weekend (-0.35): Pickup demand tends to drop significantly at night and during weekends, indicating that these times are associated with lower Uber activity.
+
+* Low Correlations:
+- wind_speed (-0.02) and number_of_persons_injured (0.03): These features have minimal impact on Uber demand, making them less valuable as predictors and potential candidates for exclusion.
 
 3. Handling Missing Values (NAs):
-* number_of_persons_killed shows missing values (NAs). We will address these missing values late.
-* year - Probably because there is only one year in the data - 2014. We will remove it.
+* number_of_persons_killed contains missing values (NAs), which we’ll handle in a later preprocessing step.
+* year is consistently NA due to having only one year (2014) in the dataset; therefore, it will be removed as it doesn’t add any variability.
 
-4. Key Takeaways: We will focus on reducing redundancy by addressing multicollinearity, especially between temp and feels_like. Features like taxi pickups and total arrests seem to influence Uber demand, while nighttime and weekends are associated with reduced activity. Low correlation features like wind speed and number of persons injured may have little predictive power and can potentially be excluded from the model.
+4. Key Takeaways:
+* Multicollinearity: We’ll reduce redundancy by addressing high correlations, specifically between temp and feels_like.
+* Predictive Features: Variables like taxis_pickup_count and total_arrests appear to influence Uber demand, while night and weekend indicators are negatively associated with pickups.
+* Low Impact Features: Variables with low correlations to number_of_pickups, such as wind_speed and number_of_persons_injured, may be removed from the model due to minimal predictive value.
 
-Note: We see that there are low correlations with the variables: hour, minute and dayInMonth with the label. For now we will keep it as is them but we may remove them later.
+5. Additional Notes:
+Low Correlation with Temporal Variables: Variables like hour, minute, and dayInMonth have low correlations with number_of_pickups. We’ll retain them initially but may consider removal in further refinement if they don’t contribute meaningfully to the model.
 
 ```{r}
 # plot corr mat for train_filtered_2000m_data:
@@ -1925,24 +1926,30 @@ create_corr_matrix(train_filtered_2000m_data, "2000m Data", numerical_features)
 
 Insights from the Correlation Matrix (2000m Data):
 1. High Correlation Between Features (Potential Multicollinearity):
-* temp and Feels_like (0.99): This nearly perfect correlation suggests redundancy. We will likely drop feels_like to avoid multicollinearity.
-Clouds_all and Humidity (0.61): This moderate correlation indicates some overlap in information, though it is less critical.
+* temp and feels_like (0.99): This nearly perfect correlation suggests redundancy. We will likely drop feels_like to minimize multicollinearity.
+* clouds_all and humidity (0.61): Moderate correlation shows some overlap, but it is less critical and may not require immediate adjustment.
 
 2. Correlation with number_of_pickups:
-* Positive Correlation:
-- Taxis_pickup_count (0.47) and Total_arrests (0.17) show moderate correlations, suggesting that both higher transportation demand (taxi activity) and arrest activity are associated with an increase in Uber pickups.
-- Event_count (0.37) and Number_of_crashes (0.37): Events and traffic incidents appear linked to increased demand for Uber pickups, likely due to congestion or disrupted transportation routes.
-* Low Correlation:
-- Wind_speed (-0.03) and Number_of_persons_killed (0.01) exhibit very weak correlations with pickups, suggesting little to no impact on Uber demand. These features may not be useful predictors.
+* Positive Correlations:
+- taxis_pickup_count (0.47) and total_arrests (0.17): These moderate correlations suggest that higher transportation demand (taxi activity) and arrest rates are associated with an increase in Uber pickups.
+- event_count (0.37) and number_of_crashes (0.37): Both events and traffic incidents appear linked to increased Uber demand, likely due to congestion or disrupted transportation options, encouraging people to choose Uber.
+
+* Low Correlations:
+- wind_speed (-0.03) and number_of_persons_killed (0.01): These features show very weak correlations with Uber pickups, indicating minimal impact on demand. They are likely not useful predictors for the model.
 
 3. Handling Missing Values (NAs):
-* year - Probably because there is only one year in the data - 2014. We will remove it.
+year is consistently NA due to having only one year (2014) in the dataset. We’ll remove it, as it does not contribute meaningful variability.
 
-4. Key Takeaways: We will prioritize reducing multicollinearity by addressing the strong correlation between temp and feels_like. Features like taxi pickups, total arrests, event count, and number of crashes seem to have a clear relationship with Uber demand, making them important predictors. Conversely, low correlation features like wind speed and number of persons killed may not significantly contribute to the model and could be excluded to simplify the analysis.
+4. Key Takeaways:
+* Multicollinearity: We’ll focus on reducing redundancy by addressing the high correlation between temp and feels_like.
+Predictive Features: Variables like taxis_pickup_count, total_arrests, event_count, and number_of_crashes show notable relationships with Uber demand, making them valuable predictors in the model.
+* Low Impact Features: Features with minimal correlation, such as wind_speed and number_of_persons_killed, may not significantly contribute to the model and could be removed to streamline analysis.
 
-Note: We see that there are low correlations with the variables: minute and dayInMonth with the label. For now we will keep it as is them but we may remove them later.
+5. Additional Notes:
+Low Correlation with Temporal Variables: Variables such as minute and dayInMonth have low correlations with number_of_pickups. We’ll retain them initially but may consider removal if they prove to be uninformative in later analysis.
 
 ---------------
+
 What about NAs:
 The NA values in the number_of_persons_killed of the correlation matrix occur because the this feature likely contains only a constant value (like all zeros), resulting in a standard deviation of zero. Correlation cannot be computed if there is no variability in the data, which leads to NA in the correlation matrix.
 Also, this is the same explanation for year feature (we only habe one year of 2014).
@@ -2076,6 +2083,7 @@ We can see & learn that:
 * In both datasets, we observe fewer pickups on holidays, with lower median pickups on Memorial Day, Independence Day, and Labor Day compared to regular days. However, the imbalance with non-holidays might exaggerate this effect. We will investigate these holidays further to check for behavioral changes in Uber demand and use these variables to identify potential outliers.
 
 -------
+
 Some conclusions so far:
 We will remove the features is_snowing_last_hour and number_of_persons_killed from both of the datasets:
 ```{r}
@@ -2118,6 +2126,7 @@ numerical_features
 ```
 
 -------
+
 "In this section, we'll perform a multicollinearity check among the numerical features. If any features are highly correlated, we may remove one to prevent redundancy. We'll use the Variance Inflation Factor (VIF) to identify potential multicollinearity issues."
 
 ```{r}
@@ -2627,30 +2636,9 @@ The monthly, weekly, and daily graphs reveal notable patterns regarding Uber dem
 - Dates with Low Uber Pickups:
 1. On April 6, 2014, New York City hosted several cultural and free events, one of the most notable being the New York Tartan Day Parade, celebrating Scottish heritage with thousands of people lining the streets of Manhattan. The parade featured bagpipers, dancers, and other Scottish cultural displays, which drew large crowds. In addition, there was the ongoing New York International Auto Show, attracting visitors to see the latest trends in the automotive industry. These large-scale events likely influenced transportation patterns in the city, possibly contributing to a reduction in Uber pickups as people opted for public transportation or walked to central event areas.
 2. 2014-04-07 - this is fourth of july (Independence Day). Fourth of july in new york 2014: Macy's Fireworks over the East River on Friday, July 4, 2014. Credit: Diana Robinson. We guess people preferred to walk and watch the fireworks.
-
+3.  2014-09-09 - We will take this day with a limited guarantee. This is the last day in our data when it had missing intervals that we filled with zeros.
 
 In summary, the stronger periods for Uber demand are found in the summer months, particularly in July, with sharp drops around late June and late August. The weekly and daily charts provide more detailed insights into these fluctuations, where the drop in late June corresponds to the monthly decline in June, and the spike in July aligns with the overall summer peak.
-
-בעברית: 
-הגרפים החודשיים, השבועיים והיומיים מגלים תבניות מעניינות לגבי הביקוש לאובר:
-
-התנהגות חודשית:
-יש עלייה ברורה בביקוש מאפריל ועד יולי, כשהשיא ביולי ולאחר מכן ירידה באוגוסט.
-השיא ביולי עשוי להיות קשור לעונת הקיץ, כשיש יותר תיירים ופעילות בעיר ניו יורק.
-
-התנהגות שבועית:
-בשבוע שמתחיל ב- 30 ביוני יש ירידה משמעותית במספר ההזמנות, דבר שמתאים לירידה הקלה שראינו בגרף של יוני.
-לאחר מכן יש עלייה חדה בביקוש במהלך השבוע של 14 ביולי, מה שמסביר את השיא בגרף החודשי של יולי.
-הירידה החדה במהלך השבוע של 25 באוגוסט כנראה מסבירה את הירידה הכוללת שנראתה באוגוסט.
-
-התנהגות יומית:
-הגרף היומי מראה דפוס קבוע יחסית עם קפיצות תקופתיות, דבר שמרמז כי ישנם ימים שבהם הביקוש גבוה משמעותית מאחרים.
-הקפיצות הללו יכולות להצביע על אירועים חוזרים, אולי סופי שבוע או חגים, שמובילים לשינויים בביקוש.
-
-פיקים יומים:
-
-
-לסיכום, התקופות החזקות בביקוש לאובר הן בחודשי הקיץ, בעיקר ביולי, עם ירידות חדות בסוף יוני ובסוף אוגוסט. הגרפים השבועיים והיומיים מספקים תובנות מפורטות יותר, שבהן הירידה בסוף יוני קשורה לירידה ביוני, והעלייה ביולי תואמת לשיא הקיץ הכללי.
 
 ----------------------------
 
@@ -2731,12 +2719,12 @@ plot_avg_pickups_by_day_of_week <- function(df, data_name) {
     summarise(avg_pickups = mean(number_of_pickups, na.rm = TRUE), .groups = "drop")
   
   # Define the correct order of time intervals
-  time_order <- c('17:00', '17:15', '17:30', '17:45', '18:00', '18:15', '18:30', '18:45',
+  time_order <- c('18:00', '18:15', '18:30', '18:45',
                   '19:00', '19:15', '19:30', '19:45', '20:00', '20:15', '20:30', '20:45', 
                   '21:00', '21:15', '21:30', '21:45', '22:00', '22:15', '22:30', '22:45', 
-                  '23:00', '23:15', '23:30', '23:45', '00:00')
+                  '23:00', '23:15', '23:30', '23:45')
   
-  # Order time intervals so that "00:00" comes after "23:45"
+  # Order time intervals
   avg_pickups_by_day$time_only <- factor(avg_pickups_by_day$time_only, levels = time_order, ordered = TRUE)
   
   # Define the order of days of the week
@@ -2772,7 +2760,7 @@ plot_avg_pickups_by_day_of_week(train_filtered_1000m_data, "1000m Data")
 This visualization displays the average Uber pickups by 15-minute intervals for each day of the week within the 1000-meter radius dataset. Each line represents a different day of the week, showing how demand changes over the course of the evening and early night hours.
 
 Key Insights:
-- Higher Demand at the Start of Evenings: All days peak around 17:00-18:00, indicating this is a popular time for Uber pickups, likely due to people finishing work or evening commutes.
+- Higher Demand at the Start of Evenings: All days peak around 18:00, indicating this is a popular time for Uber pickups, likely due to people finishing work or evening commutes.
 - Decline in Demand: As the night progresses, we observe a gradual decline in pickups, with some variations by day.
 - Weekday vs. Weekend Patterns: Friday and Saturday tend to sustain higher pickup numbers later into the evening compared to other days, reflecting nightlife and social activity.
 
@@ -2976,11 +2964,11 @@ plot_avg_pickups_by_interval <- function(data, dataset_name) {
   # Extract the time part of the time_interval for grouping by 15-minute intervals
   data$time_only <- format(as.POSIXct(data$time_interval), "%H:%M")
   
-  # Define the correct order of time intervals with "00:00" at the end
-  time_order <- c('17:00', '17:15', '17:30', '17:45', '18:00', '18:15', '18:30', '18:45',
+  # Define the correct order of time intervals
+  time_order <- c('18:00', '18:15', '18:30', '18:45',
                   '19:00', '19:15', '19:30', '19:45', '20:00', '20:15', '20:30', '20:45', 
                   '21:00', '21:15', '21:30', '21:45', '22:00', '22:15', '22:30', '22:45', 
-                  '23:00', '23:15', '23:30', '23:45', '00:00')
+                  '23:00', '23:15', '23:30', '23:45')
   
   # Calculate the average pickups for weekdays
   weekday_data <- data %>%
@@ -3034,13 +3022,13 @@ plot_daily_is_weekday_comparison(train_filtered_1000m_data, "1000m Data", "light
 ```{r}
 plot_avg_pickups_by_interval(train_filtered_1000m_data, "1000m Data")
 ```
-The comparison between weekday and weekend Uber demand for the 1000m radius highlights some distinct usage patterns:
+Based on the updated plots for the 1000-meter radius:
 
-Weekdays: Demand is higher, with a clear peak around 17:45, likely reflecting evening rush hour as people finish work. The pickups steadily decline into the evening, showing a gradual decrease as the night progresses.
+Weekdays: Uber demand is highest at the start of the evening around 18:00, with a consistent decline in pickups as the night progresses. This likely reflects evening commuting patterns, with demand peaking as people leave work and gradually decreasing into the late evening.
 
-Weekends: Demand is notably lower, with a smaller peak early in the evening but no consistent downward trend. Instead, the pattern shows small fluctuations through the evening, suggesting more casual, irregular trips that may be related to social outings or leisure activities.
+Weekends: Demand is lower overall, with a more fluctuating pattern throughout the evening. There are smaller, periodic peaks rather than a single downward trend, indicating that weekend trips are more sporadic and likely associated with social activities and leisure.
 
-Overall, Uber demand on weekdays is structured around routine activities, while weekend demand is lower and more varied. This pattern aligns with the idea that weekday demand is more predictable due to commuting needs, while weekend demand is more dispersed and less affected by specific peak hours.
+In summary, Uber demand on weekdays is structured and declines as the evening goes on, while on weekends, demand is lower and varies throughout the night, reflecting more casual usage.
 
 for 2000m:
 ```{r}
@@ -3060,32 +3048,24 @@ For the 2000m data, the weekday versus weekend demand patterns show distinct tre
 
 Daily Demand Patterns:
 
-Weekdays generally exhibit a more stable and consistently high demand throughout the observed period, with pickups spread across each day.
-Weekends show a slightly more scattered demand pattern, with demand generally lower than on weekdays, but with occasional peaks that align with events or specific weekend activities.
+Weekdays: Uber demand remains high and stable across most intervals, with pickups spread consistently from 18:00 onward, reflecting routine commuter activity.
+Weekends: Demand generally appears lower than on weekdays and is more varied, with occasional peaks. This scattered pattern aligns with weekend-specific events or social activities.
+
 Hourly Demand Trends:
+Weekdays: Pickup counts start high around 18:00 and gradually decrease after 21:00, dropping significantly closer to midnight.
+Weekends: The pickup rate also begins high in the early evening but fluctuates more, showing dips and rises throughout the night. This irregular pattern likely reflects social outings and varied weekend schedules.
 
-During weekdays, Uber pickups start at a high level in the early evening (around 17:00) and remain relatively stable until gradually decreasing after 21:00, reaching a low point by midnight.
-On weekends, while the pickup rate also starts high in the early evening, there’s a more noticeable dip and a fluctuating pattern across different intervals, likely due to varied social activities and outing habits on weekends.
-
-In summary, the 2000m data suggests that weekdays maintain a more consistent Uber demand in the evenings, while weekends experience more varied demand. This difference likely reflects more routine weekday commuting compared to the variable social and leisure activities typical of weekends.
+Summary: The 2000m data reveals that weekday evenings have more predictable, consistent Uber demand, while weekends display a more varied pattern, driven by social and leisure activities. This distinction highlights the routine nature of weekday commuting compared to the dynamic nature of weekend activities.
 
 ---------------------
 
-The differences between the 1000m and 2000m datasets reveal unique demand patterns around the Empire State Building.
+The comparison between the 1000m and 2000m datasets provides insights into how Uber demand varies around the Empire State Building area:
 
-1000m Radius: This area, tightly focused around the Empire State Building, shows sharper peaks and troughs in Uber demand, especially during rush hours. Weekday pickups are high, likely driven by commuters and tourists in the central Manhattan area. Weekends see less demand, with more variability and lower averages.
+1000m Radius: This area shows higher peaks in demand, particularly during weekday rush hours, reflecting concentrated commuter and tourist activity in central Manhattan. On weekends, demand is lower, with fluctuations likely tied to more varied tourist and leisure activity.
 
-2000m Radius: Extending beyond the immediate vicinity of the Empire State, this larger area captures a broader range of activities across parts of New York. Demand here is generally more stable, reflecting a mix of residential, business, and event-driven pickups. Weekday demand stays steady with a gradual evening decline, while weekends show less consistency but still maintain a solid baseline, likely due to broader social and leisure activities spread across the larger radius.
+2000m Radius: Covering a larger area, this dataset shows more stable demand patterns, indicative of the broader mix of residential, business, and event-driven activity in a wider urban zone. Weekday demand here remains steady through the evening, with a smoother decline. Weekend demand, while variable, maintains a steady baseline due to a mix of social and leisure outings.
 
-In summary, the 1000m data is more influenced by the Empire State’s immediate, high-traffic area, while the 2000m data reflects a wider mix of urban dynamics, smoothing out peaks and showing consistent demand across a broader area.
-
-ההבדלים בין הנתונים של רדיוס 1000 מטר סביב האמפייר סטייט לבין רדיוס 2000 מטר משקפים דפוסי ביקוש שונים.
-
-רדיוס 1000 מטר: אזור זה, שממוקד סביב האמפייר סטייט, מציג פיקים חדים יותר בשעות השיא, במיוחד במהלך ימי חול. כמות הנסיעות גבוהה במיוחד בימי חול, ככל הנראה בעקבות נוסעים ועובדים שנעים באזור מרכז מנהטן. בסופי שבוע, הביקוש יורד ונעשה פחות יציב.
-
-רדיוס 2000 מטר: הרדיוס המורחב חורג מהסביבה המיידית של האמפייר סטייט ולוכד תנועה רחבה יותר, כולל חלקים מניו יורק. הביקוש כאן יציב יותר ומשקף שילוב של מגורים, עסקים ואירועים ברחבי האזור הרחב יותר. בימי חול, הביקוש נותר יחסית קבוע עם ירידה הדרגתית בערב, בעוד שבסופי שבוע יש פחות עקביות אבל עדיין שמירה על רמה יציבה, ככל הנראה עקב פעילויות חברתיות ופנאי.
-
-בקיצור, הנתונים של 1000 מטר משקפים יותר את התנועה סביב אזור האמפייר סטייט המרכזי והעמוס, בעוד שהנתונים של 2000 מטר משקפים את הדינמיקה העירונית הרחבה יותר, ומראים ביקוש אחיד לאורך כל האזור.
+In summary, Uber demand in the 1000m radius is more affected by the intense traffic around the Empire State, showing sharp demand fluctuations. In contrast, the 2000m radius reflects a more consistent urban demand, encompassing diverse transportation needs beyond the immediate high-traffic zone.
 
 
 ##### Evening hours vs night hours
@@ -3110,17 +3090,17 @@ create_bin_plot <- function(df, data_name) {
     stop("The 'number_of_pickups' column was not found in the dataset.")
   }
   
-  # Define the evening and night intervals (including "00:00")
-  evening_intervals <- c('17:00', '17:15', '17:30', '17:45', '18:00', '18:15', '18:30', '18:45',
+  # Define the evening and night intervals
+  evening_intervals <- c('18:00', '18:15', '18:30', '18:45',
                          '19:00', '19:15', '19:30', '19:45', '20:00', '20:15', '20:30')
   night_intervals <- c('20:45', '21:00', '21:15', '21:30', '21:45', '22:00', '22:15', '22:30', 
-                       '22:45', '23:00', '23:15', '23:30', '23:45', '00:00')
+                       '22:45', '23:00', '23:15', '23:30', '23:45')
   
   # Assign categories for legend
   grouped_df$category <- ifelse(grouped_df$time_only %in% evening_intervals, "Evening", 
                                 ifelse(grouped_df$time_only %in% night_intervals, "Night", "Other"))
   
-  # Order time intervals so that "00:00" comes after "23:45"
+  # Set order of time intervals
   time_order <- c(evening_intervals, night_intervals)
   grouped_df$time_only <- factor(grouped_df$time_only, levels = time_order, ordered = TRUE)
   
@@ -3132,6 +3112,7 @@ create_bin_plot <- function(df, data_name) {
     labs(title = paste("Uber Pickups by Time Interval -", data_name),
          x = "Time Interval", y = "Total Pickups", fill = "Category")
 }
+
 ```
 
 Function that will create a table displaying the sum of pickups for each 15min interval:
@@ -3185,13 +3166,13 @@ interval_table <- create_interval_table(train_filtered_2000m_data)
 print(interval_table)
 ```
 
-The bar charts highlight Uber demand patterns in different time intervals within 1000 meters and 2000 meters of the Empire State Building.
+The bar charts illustrate Uber demand across evening and night intervals within 1000m and 2000m radii of the Empire State Building.
 
-For the 1000m radius data, the demand peaks between 17:00 and 19:00 in the evening, with a gradual decline as the night progresses. This trend shows that Uber is most frequently used around the end of the workday and early evening, likely for commuting purposes, and tapers off later in the night.
+In the 1000m radius, demand peaks between 18:00 and 19:30, aligning with the end of the workday, and then gradually declines throughout the evening and night. This suggests that Uber is heavily used for post-work and early evening activities within the close vicinity of the Empire State Building.
 
-In the 2000m radius, covering a broader area, the pattern is similar but with significantly higher total pickups. Demand remains higher across more evening intervals, suggesting more dispersed pickup locations and a wider variety of trip purposes. The broader area sustains higher volumes even into the night, reflecting the diverse nightlife, dining, and entertainment options that attract users well into the late hours.
+In the 2000m radius, while the evening peak pattern is similar, the total pickup count is significantly higher, and the demand remains strong across more intervals into the night. This broader area likely captures diverse activities and nightlife, sustaining demand later into the evening.
 
-Both graphs reveal the distinction between evening and night demand, with the 2000m radius maintaining higher activity levels than the more localized 1000m radius.
+Overall, the 2000m radius demonstrates higher and more sustained demand compared to the 1000m radius, reflecting its inclusion of a wider mix of residential, business, and entertainment venues.
 
 ----------------------------
 
@@ -3234,10 +3215,10 @@ plot_weekly_uber_pickups <- function(df, data_name, first_day_of_week) {
   day_colors_with_dates <- setNames(c("red", "orange", "yellow", "green", "blue", "purple", "pink"), day_labels_with_dates)
   
   # Order the time intervals
-  time_order <- c('17:00', '17:15', '17:30', '17:45', '18:00', '18:15', '18:30', '18:45',
+  time_order <- c('18:00', '18:15', '18:30', '18:45',
                   '19:00', '19:15', '19:30', '19:45', '20:00', '20:15', '20:30', '20:45', 
                   '21:00', '21:15', '21:30', '21:45', '22:00', '22:15', '22:30', '22:45', 
-                  '23:00', '23:15', '23:30', '23:45', '00:00')
+                  '23:00', '23:15', '23:30', '23:45')
 
   weekly_summary$time_only <- factor(weekly_summary$time_only, levels = time_order, ordered = TRUE)
   
@@ -3374,7 +3355,7 @@ plot_uber_demand_for_time_interval <- function(data, dataset_name, time_interval
 
 for 1000m:
 ```{r}
-plot_uber_demand_for_time_interval(train_filtered_1000m_data, "1000m Data", "17:45", "lightblue")
+plot_uber_demand_for_time_interval(train_filtered_1000m_data, "1000m Data", "18:00", "lightblue")
 ```
 
 ```{r}
@@ -3410,7 +3391,7 @@ plot_uber_demand_for_time_interval(train_filtered_2000m_data, "2000m Data", "19:
 
 
 We saw earlier that the peak hours for Data 1000 is 17:45 and for Data 2000 it is 18:00 (hours will the biggest amount of uber pickups overall).
-During rush hour (17:45 for 1000m and 18:00 for 2000m), people tend to take Uber regardless of whether it is raining or not. This is likely due to the necessity of commuting at those times. However, we see similar trends in pickups, where rain does not seem to significantly alter the demand pattern. This is expected during rush hours when people prioritize getting home or to work, rain or shine.
+During rush hour (18:00 for 1000m & 2000m dfs), people tend to take Uber regardless of whether it is raining or not. This is likely due to the necessity of commuting at those times. However, we see similar trends in pickups, where rain does not seem to significantly alter the demand pattern. This is expected during rush hours when people prioritize getting home or to work, rain or shine.
 
 To better understand the effect of rain, we should consider looking at other time intervals where Uber demand is not the highest. By choosing a time that is not during rush hour but also not too late, we can see whether rain significantly influences Uber pickups when commuters have more flexibility in their transportation choices.
 
@@ -3834,11 +3815,15 @@ plot_feels_like_vs_pickups(train_filtered_1000m_data, "1000m Data")
 plot_feels_like_vs_pickups(train_filtered_2000m_data, "2000m Data")
 ```
 
-The "feels like" temperature significantly influences Uber demand in this dataset, which primarily covers the warmer summer months. The majority of Uber pickups are concentrated in "feels like" temperature ranges that are moderately high (18.8 - 27.9°C), as seen by the high percentage of pickups in this range for both the 1000m and 2000m datasets. This pattern suggests that when the weather is comfortable or mildly warm, people are more likely to go out, leading to higher Uber demand.
+The "feels like" temperature has a clear impact on Uber demand around the Empire State Building.
 
-On the other hand, in extreme "feels like" conditions—both high and low—the demand for Uber drops. In particularly hot weather (27.9 - 37°C), fewer people may choose to leave their homes, possibly preferring to work remotely or avoid outings to stay comfortable. Similarly, in cooler conditions (0.5 - 9.7°C), there may also be reduced activity, though this temperature range is less represented in the summer data.
+1. Moderate Temperatures Drive Demand: Most Uber pickups occur when the "feels like" temperature is moderately warm (18.8 - 27.9°C). In both the 1000m and 2000m datasets, over half of the pickups happen in this range, indicating that people are more likely to be out and use Uber services when temperatures are comfortable.
 
-Overall, these insights reflect the tendency of people to stay home when the weather is uncomfortable, whether it’s too hot or relatively cool. Thus, "feels like" temperature becomes a significant factor in Uber demand, with moderate, comfortable weather encouraging more travel, while extreme temperatures have the opposite effect.
+2. Extreme Temperatures Decrease Demand: During high temperatures (27.9 - 37°C) and low temperatures (0.5 - 9.7°C), the demand for Uber decreases. This suggests that people are less inclined to venture out when it feels very hot or relatively cold, possibly opting to stay indoors or work from home to avoid discomfort.
+
+3. Balanced Time Distribution Reference: The time distribution bar beside each temperature range in the legend shows that these insights are not solely due to time spent in each range. Even with nearly 55.6% of time intervals in the mid-low range, the highest demand is still in the mid-high range, reinforcing the "feels like" temperature’s influence on Uber demand.
+
+In summary, people prefer using Uber during comfortable temperatures, while extreme weather conditions—both hot and cold—lead to a noticeable drop in demand.
 
 ##### EDA Conclusions
 
